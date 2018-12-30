@@ -25,16 +25,18 @@ app.use(requestIp.mw({ attributeName : 'myCustomAttributeName' }))
 
 
 
-var server=http.createServer(app.use(function(request,response){
+var server=http.createServer(
+	
+	app.use(
 
-	var ip = request.myCustomAttributeName;
-    var fileName=path.basename(request.url) || 'index.html';
-    var fullPath=__dirname+'/src/'+fileName;
-    console.log('Request for '+fullPath+' received. Client ip is '+ip);
+		function(request,response){
 
-    fs.exists(fullPath,function(exists){
-    	if (exists) {
-	    	fs.readFile(fullPath,function(error,fileBinary){
+			var ip = request.myCustomAttributeName;
+		    var fileName=path.basename(request.url) || 'index.html';
+		    var fullPath=__dirname+'/src/'+fileName;
+		    console.log('Request for '+fullPath+' received. Client ip is '+ip);
+
+			fs.readFile(fullPath,function(error,fileBinary){
 		        if (error){
 		            console.log(error);
 		            response.writeHead(200,{
@@ -49,12 +51,8 @@ var server=http.createServer(app.use(function(request,response){
 		        }
 		        response.end();
 		    });
-	    }else {
-	    	console.log('url error occurs')
 	    }
-    })
-    
-})
+	)
 )
 
 server.listen(websocketPort,function(){
