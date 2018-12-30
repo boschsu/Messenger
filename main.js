@@ -14,16 +14,23 @@ var colors = [ 'red', 'green', 'blue', 'magenta', 'purple', 'plum', 'orange' ];
 colors.sort(function(a,b) { return Math.random() > 0.5; } );
 
 
-
+var connect = require('connect');
 var http=require('http');
 var fs=require('fs');
 var path=require('path');
+var requestIp=require('request-ip')
+var app=connect();
 
-var server=http.createServer(function(request,response){
+app.use(requestIp.mw({ attributeName : 'myCustomAttributeName' }))
 
+
+
+var server=http.createServer(app.use(function(request,response){
+
+	var ip = request.myCustomAttributeName;
     var fileName=path.basename(request.url) || 'index.html';
     var fullPath=__dirname+'/src/'+fileName;
-    console.log('Request for '+fullPath+' received.');
+    console.log('Request for '+fullPath+' received. Client ip is '+ip);
 
     fs.exists(fullPath,function(exists){
     	if (exists) {
@@ -48,7 +55,7 @@ var server=http.createServer(function(request,response){
     })
     
 })
-console.log('Server running at http://localhost:80/');
+)
 
 server.listen(websocketPort,function(){
 	console.log( (new Date())+" Server is listening on port "+websocketPort )
