@@ -6,18 +6,28 @@
 	<title>Messenger - NII</title>
 
 	<style type="text/css">
-		* { font-family:tahoma; font-size:12px; padding:0px; margin:0px; }
-        p { line-height:18px; }
-        div { width:500px; margin-left:auto; margin-right:auto;}
-        #conversation_board { padding:5px; background:#ddd; border-radius:5px; overflow-y: scroll;
-                   border:1px solid #CCC; margin-top:10px; height: 160px; }
-        .input_text { border-radius:2px; border:1px solid #ccc;
-                 margin-top:10px; padding:5px; width:400px;  }
-        #status { width:88px; display:block; float:left; margin-top:15px; }
+		* { padding:0px; margin:0px;     box-sizing: border-box;}
+
+        body {font-family:tahoma; font-size:12px;    padding: 2%;}
+
+        p { line-height:1.6; }
+        label {    display: block;}
+        #conversation_control {display: none;}
+        #conversation_board {padding: 5px 10px;background: #ddd;border-radius: 5px;overflow-y: scroll;border: 1px solid #CCC;margin-top: 10px;min-height: 20vh;max-height: 50vh;}
+        .button {border: 0;background: dodgerblue;text-align: center;color: #fff;padding: 10px;border-radius: 5px;display: block;margin: 10px auto;width: 100%;}
+        .input_text {border-radius: 5px;border: 1px solid #ccc;margin-top: 10px;padding: 10px;width: 100%;}
+        #status {display:inline-block;}
+        #getlogout {height: 12px;vertical-align: middle;border: 0;background: dodgerblue;color: #fff;padding: 1px 3px;font-size: 10px;line-height: 10px;margin-left: 10px;}
+
+        @media screen and (max-width:480px) {
+            #conversation_board {padding: 1vw 2vw;margin-top: 2vw;}
+            .button {max-height: 8vw;padding: 2vw 20vw;border-radius: 1vw;margin: 2vw auto;}
+            .input_text {border-radius: 1vw;margin-top: 2vw;padding: 2vw;max-height:8vw;}
+            #status {max-height: 5vw;}
+        }
 	</style>
 
     <script src="https://cdn.bootcss.com/jquery/1.9.1/jquery.min.js"></script>
-    <script src="https://unpkg.com/axios@0.18.0/dist/axios.js"></script>
 
 </head>
 
@@ -25,13 +35,15 @@
 
 <form action="postlogin" method="post" id="postlogin" enctype=>
     <label>Name: <input class="input_text" type="text" name="name" placeholder="Type your name here" /></label><br />
-    <label>Age: <input class="input_text" type="text" name="age" placeholder="Type your age here" /></label>
-    <input type="submit" value="Done" />
+    <label>Password: <input class="input_text" type="password" name="password" placeholder="Type your password here" /></label>
+    <input class="button" type="submit" value="Done" />
 </form>
 
-<span id="status">Connecting...</span>
-<input class="input_text" id="input_messenger" type="text" disabled="disabled" />
-<button id="send_messenger">发送</button>
+<section id="conversation_control">
+    <span id="status">Connecting...</span><button id="getlogout">Logout</button>
+    <input class="input_text" id="input_messenger" type="text" disabled="disabled" />
+    <button class="button" id="send_messenger">发送</button>
+</section>
 
 <div id="conversation_board"></div>
 
@@ -57,12 +69,13 @@ $(function () {
         return o;
     };
 
-    // for better performance - to avoid searching in DOM
+    var control=$('#conversation_control');
     var content = $('#conversation_board');
     var input = $('#input_messenger');
     var send = $('#send_messenger');
     var status = $('#status');
     var postlogin=$('#postlogin');
+    var getlogout=$('#getlogout');
     
     postlogin.on('submit',function(e){
         e.preventDefault();
@@ -71,8 +84,12 @@ $(function () {
         xhr.onreadystatechange=function(){
             if (xhr.readyState === 4 && xhr.status === 200) {
                 console.log(xhr.responseText)
-                var result=JSON.parse(xhr.responseText);
-                afterAuth(result.name);
+                if (xhr.responseText!=='') {
+                    var result=JSON.parse(xhr.responseText);
+                    afterAuth(result.name);
+                }else {
+                    console.log('no name parsed.')
+                }
             }
         }
         xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");//declare this is a form
@@ -80,7 +97,31 @@ $(function () {
     })
 
     function afterAuth(name){
+        postlogin.hide();
+        control.show();
         sendMessenger(name);
+    }
+
+    function logout(){        
+        var xhr=new XMLHttpRequest();
+        xhr.open('get', 'getlogout?type=logout', true);
+        xhr.onreadystatechange=function(){
+            if (xhr.readyState === 4 && xhr.status === 200) {
+                postlogin.show();
+                postlogin[0].reset()
+                control.hide();
+                content.empty();
+                myName = false
+                console.log(xhr.responseText)
+                // if (xhr.responseText!=='') {
+                //     var result=JSON.parse(xhr.responseText);
+                //     afterAuth(result.name);
+                // }else {
+                //     console.log('no name parsed.')
+                // }
+            }
+        }        
+        xhr.send();
     }
 
     // my color assigned by the server
@@ -102,7 +143,7 @@ $(function () {
     }
 
     // open connection
-    var connection = new WebSocket(url);
+    var connection = new WebSocket(url);//request to server
 
     connection.onopen = function () {
         // first we want users to enter their names
@@ -141,10 +182,16 @@ $(function () {
                 addMessage(json.data[i].author, json.data[i].text,
                            json.data[i].color, new Date(json.data[i].time));
             }
+            postlogin.hide();
+            control.show();
+            if (json.name) {
+                status.text(json.name + ': ').css('color', json.color)
+            }
         } else if (json.type === 'message') { // it's a single message
             input.removeAttr('disabled'); // let the user write another message
             addMessage(json.data.author, json.data.text,
                        json.data.color, new Date(json.data.time));
+            setTimeout(function(){input.focus();},0);
         } else {
             console.log('Hmm..., I\'ve never seen JSON like this: ', json);
         }
@@ -163,6 +210,10 @@ $(function () {
             sendMessenger()
         }
     });
+
+    getlogout.on('click',function(e){
+        logout();
+    })
 
     function sendMessenger(msg){
         var msg = msg|| input.val();
