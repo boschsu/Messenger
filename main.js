@@ -166,15 +166,17 @@ ws.on('request',function(request){
 				//userColor=colors.shift()
 				sessionParser(request.httpRequest, {}, function(){
 					request.httpRequest.session.username=userName
-					//request.httpRequest.session.usercolor=userColor
+					//console.log(request.httpRequest.session.usercolor)
+					userColor=request.httpRequest.session.usercolor===undefined
+				        	?colors.shift()
+				        	:request.httpRequest.session.usercolor				        
+					request.httpRequest.session.usercolor=userColor
 					request.httpRequest.session.sid=request.cookies[0].value
 			        request.httpRequest.session.save(function(error){
 			        	if (error) {
 			        		console.log("SESSION SAVE ERROR:",error)
 			        	}
-			        	userColor=request.httpRequest.session.usercolor===false
-				        	?colors.shift()
-				        	:request.httpRequest.session.usercolor
+
 			        	connection.sendUTF(JSON.stringify({
 							type:'color',
 							data:userColor
