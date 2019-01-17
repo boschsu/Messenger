@@ -92,7 +92,16 @@ var server=http.createServer(
 				});
 				response.end('logout success');
 			}else {
+				//console.log( url.parse(request.url).pathname )
+				//console.log( path.basename(request.url) )				
 				var fileName=path.basename(request.url) || 'index.html';
+				console.log(fileName)
+				fileName=path.basename(request.url).indexOf('?')==0
+					?'index.html'
+					:path.basename(request.url)==''
+						?'index.html'
+						:path.basename(request.url);
+				console.log(fileName)
 				var fullPath=__dirname+'/src/'+fileName;
 				console.log('Request for '+fullPath+' received.\r\n------Client ip is '+ip);
 				// console.log(session)
