@@ -28,7 +28,7 @@
 	</style>
 
     <script src="https://cdn.bootcss.com/jquery/1.9.1/jquery.min.js"></script>
-
+    <script src="https://cdn.bootcss.com/jquery-cookie/1.4.1/jquery.cookie.min.js"></script>
 </head>
 
 <body>
@@ -51,7 +51,7 @@
 $(function () {
     "use strict";
 
-    var url='ws://127.0.0.1:3001';
+    var url='ws://192.168.2.101:3001';
 
     $.fn.serializeObject = function(){
         var o = {};
@@ -88,7 +88,7 @@ $(function () {
                     var result=JSON.parse(xhr.responseText);
                     afterAuth(result.name);
                 }else {
-                    console.log('no name parsed.')
+                    console.log('no name parsed or already login.')
                 }
             }
         }
@@ -104,7 +104,11 @@ $(function () {
 
     function logout(){        
         var xhr=new XMLHttpRequest();
-        xhr.open('get', 'getlogout?type=logout', true);
+        xhr.open(
+            'get', 
+            'getlogout?sid_name='+$.cookie('sid_name'), 
+            true
+        );
         xhr.onreadystatechange=function(){
             if (xhr.readyState === 4 && xhr.status === 200) {
                 postlogin.show();
@@ -112,6 +116,7 @@ $(function () {
                 control.hide();
                 content.empty();
                 myName = false
+                $.removeCookie('sid_name')
                 console.log(xhr.responseText)
                 // if (xhr.responseText!=='') {
                 //     var result=JSON.parse(xhr.responseText);
@@ -149,6 +154,10 @@ $(function () {
         // first we want users to enter their names
         input.removeAttr('disabled');
         status.text('Choose name:');
+
+        if ($.cookie('sid_name')!==undefined){
+            sendMessenger($.cookie('sid_name'))
+        }        
     };
 
     connection.onerror = function (error) {
@@ -177,6 +186,7 @@ $(function () {
             input.removeAttr('disabled').focus();
             // from now user can start sending messages
         } else if (json.type === 'history') { // entire message history
+            //console.log('history received')
             // insert every single message to the chat window
             for (var i=0; i < json.data.length; i++) {
                 addMessage(json.data[i].author, json.data[i].text,
@@ -230,6 +240,10 @@ $(function () {
         // we know that the first message sent from a user their name
         if (myName === false) {
             myName = msg;
+            //console.log($.cookie('sid_name')===undefined)
+            if ($.cookie('sid_name')===undefined) {
+                $.cookie('sid_name',myName)
+            }
         }
     }
 

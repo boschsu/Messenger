@@ -16,6 +16,7 @@ var MongoClient=require('mongodb').MongoClient;
 var connect = require('connect');
 var expressSession = require('express-session')
 var cookieParser = require('cookie-parser')
+var MongoStore=require('connect-mongo')(expressSession)
 var http=require('http');
 var fs=require('fs');
 var path=require('path');
@@ -27,7 +28,14 @@ var app=connect();
 
 app.use(requestIp.mw({ attributeName : 'clientIP' }))
 app.use(cookieParser())
-var sessionParser=expressSession({ name: 'MessengerID', secret: 'node messenger', resave: false, saveUninitialized: true, cookie: { secure: false } })
+var sessionParser=expressSession({
+	secret: 'node messenger',
+	resave: false, 
+	saveUninitialized: true,
+	store:new MongoStore({
+		url:url_db
+	})
+})
 app.use(sessionParser)
 
 var server=http.createServer(
@@ -38,7 +46,6 @@ var server=http.createServer(
 
 			var ip = request.clientIP;
 			var session=request.session;
-			//console.log(session)
 			if (url.parse(request.url).pathname=='/postlogin'){
 				var _data='';
 				request.on('data',function(data){
@@ -46,11 +53,6 @@ var server=http.createServer(
 				})
 				request.on('end',function(){
 					response.writeHead(200, {'Content-Type': 'application/json'});
-					// var data={
-					// 	name:'高级'
-					// }
-					// response.end( JSON.stringify(_data) );
-					// var result=decodeURIComponent(_data)
 					var _result=querystring.parse(_data)
 					var result=JSON.stringify(_result)
 					if (validationData(_result)) {
@@ -60,13 +62,9 @@ var server=http.createServer(
 							}else {
 								switch(options.type) {
 									case 'register':
-										session.username=_result.name
-										session.usercolor=userColor
 										response.end('{"name":"'+result.name+'"}')
 										break;
 									case 'login':
-										session.username=_result.name
-										session.usercolor=userColor
 										response.end('{"name":"'+_result.name+'"}')									
 										break;
 									default: 										
@@ -81,42 +79,44 @@ var server=http.createServer(
 					}
 				})
 			}else if(url.parse(request.url).pathname=='/getlogout'){
-				//console.log(request.query)
-				userName=false;
-				userColor=false;
-				session=null;
-				// console.log(session)
-				// session.destroy(function(error){
-				// 	console.log("SESSION DESTORY ERROR:",error)
-				// })
+				//console.log('Query: ',url.parse(request.url).query)
+				//console.log(session.username== querystring.parse( url.parse(request.url).query ).sid_name )
+				var _connection=clients.filter(function(data){
+					return data.userName==session.username
+				})[0];
+				_connection.userName=false;
+				_connection.userColor=false;
+				//console.log(_connection)
 				response.writeHead(200,{
 					'Content-Type':'text/html'
 				});
-				response.end('success');
+				response.end('logout success');
 			}else {
 				var fileName=path.basename(request.url) || 'index.html';
 				var fullPath=__dirname+'/src/'+fileName;
-				console.log('Request for '+fullPath+' received.\r\n^^^Client ip is '+ip);
-				//console.log(session)
-				if (!session.username) {
-					//session.username='humor'
-				}else {
-					// console.log('Session Username: ',session.username)
-					// console.log('Session Usercolor: ',session.usercolor)
-					userName=session.username
-					userColor=session.usercolor
-					exportDialogueFromDB(function(result){
-						if (result.length>0) {
-							connection.sendUTF(JSON.stringify({
-								type:'history',
-								data:result,
-								name:userName,
-								color:userColor
-							}))
-						}
-					})
-				}
-				// console.log('Session Username : ',session.username)
+				console.log('Request for '+fullPath+' received.\r\n------Client ip is '+ip);
+				// console.log(session)
+				// if (!session.username) {
+					
+				// }else {
+				// 	var username=session.username
+				// 	var usercolor=session.usercolor
+				// 	exportDialogueFromDB(function(result){
+				// 		if (result.length>0) {
+				// 			// console.log(clients.filter(function(data){
+				// 			// 	return data.userName==username
+				// 			// }))
+				// 			// clients.filter(function(data){
+				// 			// 	return data.userName==username
+				// 			// })[0].connection.sendUTF(JSON.stringify({
+				// 			// 	type:'history',
+				// 			// 	data:result,
+				// 			// 	name:username,
+				// 			// 	color:usercolor
+				// 			// }))
+				// 		}
+				// 	})
+				// }
 				fs.readFile(fullPath,function(error,fileBinary){
 					if (error){
 						console.log(error);
@@ -145,35 +145,51 @@ var ws=new websocketServer({
 	httpServer:server
 })
 var history=[];
-var clients=[]
-var connection;
-var userName=false;
-var userColor=false;
+var clients=[];
 
 ws.on('request',function(request){
-	connection=request.accept(null,request.origin)
+	var connection=request.accept(null,request.origin)
 	console.log("Websocket connection from "+request.origin+' accepted.');
-
-	var index=clients.push(connection)-1
-
+	var userName=false;
+	var userColor=false;
+	var index=clients.push({
+		connection:connection,
+		userName:userName,
+		userColor:userColor		
+	})-1
+	//console.log(request.cookies)
 	connection.on('message',function(message){
 		if (message.type==='utf8') {
-			if (userName===false) {
+			//console.log(clients[index])
+			if (clients[index].userName===false) {
 				userName=htmlEntities(message.utf8Data);
-				userColor=colors.shift()
+				//userColor=colors.shift()
 				sessionParser(request.httpRequest, {}, function(){
-					request.httpRequest.session.usercolor=userColor
+					request.httpRequest.session.username=userName
+					//request.httpRequest.session.usercolor=userColor
+					request.httpRequest.session.sid=request.cookies[0].value
 			        request.httpRequest.session.save(function(error){
 			        	if (error) {
 			        		console.log("SESSION SAVE ERROR:",error)
 			        	}
+			        	userColor=request.httpRequest.session.usercolor===false
+				        	?colors.shift()
+				        	:request.httpRequest.session.usercolor
+			        	connection.sendUTF(JSON.stringify({
+							type:'color',
+							data:userColor
+						}))
 			        })
+			        // console.log(request.httpRequest.session)
+			        
+			        //console.log(request.httpRequest.session)
 			    });
-				connection.sendUTF(JSON.stringify({
-					type:'color',
-					data:userColor
-				}))				
-				console.log('session usercolor created')
+			    // console.log(userColor)
+				
+				clients[index].userName=userName
+				clients[index].userColor=userColor
+				// console.log(clients[index])
+				
 				exportDialogueFromDB(function(result){
 					if (result.length>0) {
 						connection.sendUTF(JSON.stringify({
@@ -197,8 +213,9 @@ ws.on('request',function(request){
 					type:'message', 
 					data: obj 
 				});
+				//console.log('clients length: ',clients.length)
 				for (var i=0;i<clients.length;i++){
-					clients[i].sendUTF(json)//boradcast message to all connections
+					clients[i].connection.sendUTF(json)//boradcast message to all connections
 				}
 			}
 		}
@@ -222,7 +239,13 @@ function insertOneToDB(entry,callback){
 			throw('step1:'+error)
 		}
 		var messengerDB=mongo.db('messenger')
-		// var entryExist=false;
+
+		var _connection=clients.filter(function(data){
+			return data.userName==entry.name
+		});
+		if (_connection.length>0) {
+			return callback()
+		}
 
 		messengerDB.collection('conversations').findOne(
 			{
@@ -242,9 +265,9 @@ function insertOneToDB(entry,callback){
 						}
 						callback(result,{type:'login'})
 					})
-				}
-				
-			})
+				}				
+			}
+		)
 	})
 }
 
