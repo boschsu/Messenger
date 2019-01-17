@@ -34,7 +34,11 @@ var sessionParser=expressSession({
 	saveUninitialized: true,
 	store:new MongoStore({
 		url:url_db
-	})
+	}),
+	cookie:{
+		path:'/',
+		maxAge: 60000 * 60
+	}
 })
 app.use(sessionParser)
 
@@ -86,6 +90,8 @@ var server=http.createServer(
 				})[0];
 				_connection.userName=false;
 				_connection.userColor=false;
+
+				//removeSessionFromDB(session.sid)
 				//console.log(_connection)
 				response.writeHead(200,{
 					'Content-Type':'text/html'
@@ -95,13 +101,13 @@ var server=http.createServer(
 				//console.log( url.parse(request.url).pathname )
 				//console.log( path.basename(request.url) )				
 				var fileName=path.basename(request.url) || 'index.html';
-				console.log(fileName)
+				// console.log(fileName)
 				fileName=path.basename(request.url).indexOf('?')==0
 					?'index.html'
 					:path.basename(request.url)==''
 						?'index.html'
 						:path.basename(request.url);
-				console.log(fileName)
+				// console.log(fileName)
 				var fullPath=__dirname+'/src/'+fileName;
 				console.log('Request for '+fullPath+' received.\r\n------Client ip is '+ip);
 				// console.log(session)
@@ -181,6 +187,7 @@ ws.on('request',function(request){
 				        	:request.httpRequest.session.usercolor				        
 					request.httpRequest.session.usercolor=userColor
 					request.httpRequest.session.sid=request.cookies[0].value
+					// console.log(request.httpRequest.session.sid)
 			        request.httpRequest.session.save(function(error){
 			        	if (error) {
 			        		console.log("SESSION SAVE ERROR:",error)
@@ -224,7 +231,7 @@ ws.on('request',function(request){
 					type:'message', 
 					data: obj 
 				});
-				//console.log('clients length: ',clients.length)
+				console.log('clients length: ',clients.length)
 				for (var i=0;i<clients.length;i++){
 					clients[i].connection.sendUTF(json)//boradcast message to all connections
 				}
@@ -332,6 +339,33 @@ function exportDialogueFromDB(next){
 			mongo.close();
 			next(result)
 		})
+	})
+}
+
+function removeSessionFromDB(sid){
+	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
+		if (error) {
+			throw(error)
+		}
+		var messengerDB=mongo.db('messenger')
+		
+		var datas=messengerDB.collection('sessions').find({}).forEach(function(data){
+				// console.log(data)
+				if (data.session.indexOf(sid)>-1) {
+					var _id=data._id
+					//console.log(_id)
+					messengerDB.collection('sessions').deleteOne({_id:_id},function(error,object){
+						if (error) {
+							throw(error)
+						}
+						console.log("session deleted");
+						mongo.close();
+					})
+					
+				}
+			
+		});
+		//mongo.close();
 	})
 }
 
