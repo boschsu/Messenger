@@ -87,66 +87,7 @@ $(function () {
     
     postlogin.on('submit',function(e){
         e.preventDefault();
-        if (connection==false) {
-            connection = new WebSocket(url);
-
-            connection.onopen = function () {
-                // first we want users to enter their names
-                input.removeAttr('disabled');
-                status.text('Choose name:');
-
-                if ($.cookie('sid_name')!==undefined){
-                    sendMessenger($.cookie('sid_name'))
-                }
-            };
-
-            connection.onerror = function (error) {
-                // just in there were some problems with conenction...
-                content.html($('<p>', { text: 'Sorry, but there\'s some problem with your '
-                                            + 'connection or the server is down.' } ));
-            };
-
-            // most important part - incoming messages
-            connection.onmessage = function (message) {
-                // try to parse JSON message. Because we know that the server always returns
-                // JSON this should work without any problem but we should make sure that
-                // the massage is not chunked or otherwise damaged.
-                try {
-                    var json = JSON.parse(message.data);
-                } catch (e) {
-                    console.log('This doesn\'t look like a valid JSON: ', message.data);
-                    return;
-                }
-
-                // NOTE: if you're not sure about the JSON structure
-                // check the server source code above
-                if (json.type === 'color') { // first response from the server with user's color
-                    myColor = json.data;
-                    status.text(myName + ': ').css('color', myColor);
-                    input.removeAttr('disabled').focus();
-                    // from now user can start sending messages
-                } else if (json.type === 'history') { // entire message history
-                    //console.log('history received')
-                    // insert every single message to the chat window
-                    for (var i=0; i < json.data.length; i++) {
-                        addMessage(json.data[i].author, json.data[i].text,
-                                   json.data[i].color, new Date(json.data[i].time));
-                    }
-                    postlogin.hide();
-                    control.show();
-                    if (json.name) {
-                        status.text(json.name + ': ').css('color', json.color)
-                    }
-                } else if (json.type === 'message') { // it's a single message
-                    input.removeAttr('disabled'); // let the user write another message
-                    addMessage(json.data.author, json.data.text,
-                               json.data.color, new Date(json.data.time));
-                    setTimeout(function(){input.focus();$('#play').click();},0);
-                } else {
-                    console.log('Hmm..., I\'ve never seen JSON like this: ', json);
-                }
-            };
-        }
+        
         msg_audio.load();
         var xhr=new XMLHttpRequest();
         xhr.open('post', 'postlogin', true);
@@ -155,7 +96,10 @@ $(function () {
                 console.log(xhr.responseText)
                 if (xhr.responseText!=='') {
                     var result=JSON.parse(xhr.responseText);
-                    afterAuth(result.name);
+                    if (connection==undefined) {
+                        connectToWebsocket(function(){afterAuth(result.name)})
+                    }
+                    
                 }else {
                     console.log('no name parsed or already login.')
                 }
@@ -181,7 +125,7 @@ $(function () {
         xhr.onreadystatechange=function(){
             if (xhr.readyState === 4 && xhr.status === 200) {
                 connection.close()
-                connection=false;
+                connection=undefined;
                 postlogin.show();
                 postlogin[0].reset()
                 control.hide();
@@ -219,9 +163,70 @@ $(function () {
     }
 
     // open connection
-    var connection = false;//request to server
+    var connection;//request to server
 
-    
+    function bindWebsocketConnection(onopen_callback){
+        connection.onopen = function () {
+            // first we want users to enter their names
+            input.removeAttr('disabled');
+            status.text('Choose name:');
+
+            if (onopen_callback) {
+                onopen_callback();
+            }            
+        };
+
+        connection.onerror = function (error) {
+            // just in there were some problems with conenction...
+            content.html($('<p>', { text: 'Sorry, but there\'s some problem with your '
+                                        + 'connection or the server is down.' } ));
+        };
+
+        // most important part - incoming messages
+        connection.onmessage = function (message) {
+            // try to parse JSON message. Because we know that the server always returns
+            // JSON this should work without any problem but we should make sure that
+            // the massage is not chunked or otherwise damaged.
+            try {
+                var json = JSON.parse(message.data);
+            } catch (e) {
+                console.log('This doesn\'t look like a valid JSON: ', message.data);
+                return;
+            }
+
+            // NOTE: if you're not sure about the JSON structure
+            // check the server source code above
+            if (json.type === 'color') { // first response from the server with user's color
+                myColor = json.data;
+                status.text(myName + ': ').css('color', myColor);
+                input.removeAttr('disabled').focus();
+                // from now user can start sending messages
+            } else if (json.type === 'history') { // entire message history
+                //console.log('history received')
+                // insert every single message to the chat window
+                for (var i=0; i < json.data.length; i++) {
+                    addMessage(json.data[i].author, json.data[i].text,
+                               json.data[i].color, new Date(json.data[i].time));
+                }
+                postlogin.hide();
+                control.show();
+                if (json.name) {
+                    status.text(json.name + ': ').css('color', json.color)
+                }
+            } else if (json.type === 'message') { // it's a single message
+                input.removeAttr('disabled'); // let the user write another message
+                addMessage(json.data.author, json.data.text,
+                           json.data.color, new Date(json.data.time));
+                setTimeout(function(){input.focus();$('#play').click();},0);
+            } else {
+                console.log('Hmm..., I\'ve never seen JSON like this: ', json);
+            }
+        };
+
+        connection.onclose =function(e){
+            alert("WebSocket is closed now.",e);
+        }
+    }
 
     /**
      * Send mesage when user presses Enter key
@@ -291,6 +296,25 @@ $(function () {
             + message 
             + '</p>'
         );
+    }
+
+    function getDataWhenRefresh(){
+        if ($.cookie('sid_name')!==undefined) {
+            sendMessenger($.cookie('sid_name'))
+        }
+    }
+
+    function connectToWebsocket(onopen_callback){
+        connection = new WebSocket(url);
+        bindWebsocketConnection(onopen_callback)
+    }
+
+    //init
+    if ($.cookie('sid_name')!==undefined){
+        if (connection==undefined) {
+            connectToWebsocket(getDataWhenRefresh)
+        }
+        
     }
 });
 </script>

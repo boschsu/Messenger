@@ -85,11 +85,11 @@ var server=http.createServer(
 			}else if(url.parse(request.url).pathname=='/getlogout'){
 				//console.log('Query: ',url.parse(request.url).query)
 				//console.log(session.username== querystring.parse( url.parse(request.url).query ).sid_name )
-				var _connection=clients.filter(function(data){
-					return data.userName==session.username
-				})[0];
-				_connection.userName=false;
-				_connection.userColor=false;
+				// clients.pop(_connection=clients.filter(function(data){
+				// 	return data.userName==session.username
+				// })[0]);
+				// _connection.userName=false;
+				// _connection.userColor=false;
 
 				//removeSessionFromDB(session.sid)
 				//console.log(_connection)
@@ -169,10 +169,11 @@ ws.on('request',function(request){
 	var userColor=false;
 	var index=clients.push({
 		connection:connection,
+		remoteAddress:connection.remoteAddress,
 		userName:userName,
-		userColor:userColor		
+		userColor:userColor
 	})-1
-	//console.log(request.cookies)
+	// console.log('clients index: ',index)
 	connection.on('message',function(message){
 		if (message.type==='utf8') {
 			//console.log(clients[index])
@@ -186,6 +187,7 @@ ws.on('request',function(request){
 				        	?colors.shift()
 				        	:request.httpRequest.session.usercolor				        
 					request.httpRequest.session.usercolor=userColor
+					// console.log(request.cookies)
 					request.httpRequest.session.sid=request.cookies[0].value
 					// console.log(request.httpRequest.session.sid)
 			        request.httpRequest.session.save(function(error){
@@ -242,7 +244,7 @@ ws.on('request',function(request){
 	connection.on('close', function(connection) {
 		if (userName !== false && userColor !== false) {
 			console.log((new Date()) + " Peer "
-				+ connection.remoteAddress + " disconnected.");
+				+ clients[index].connection.remoteAddress + " disconnected.");
 			// remove user from the list of connected clients
 			clients.splice(index, 1);
 			// push back user's color to be reused by another user
@@ -258,9 +260,11 @@ function insertOneToDB(entry,callback){
 		}
 		var messengerDB=mongo.db('messenger')
 
+		//excute already login		
 		var _connection=clients.filter(function(data){
 			return data.userName==entry.name
 		});
+		console.log('Already login: ',_connection.length)
 		if (_connection.length>0) {
 			return callback()
 		}
