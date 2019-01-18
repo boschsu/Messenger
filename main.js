@@ -233,7 +233,7 @@ ws.on('request',function(request){
 					type:'message', 
 					data: obj 
 				});
-				console.log('clients length: ',clients.length)
+				// console.log('clients length: ',clients.length)
 				for (var i=0;i<clients.length;i++){
 					clients[i].connection.sendUTF(json)//boradcast message to all connections
 				}
@@ -264,7 +264,7 @@ function insertOneToDB(entry,callback){
 		var _connection=clients.filter(function(data){
 			return data.userName==entry.name
 		});
-		console.log('Already login: ',_connection.length)
+		// console.log('Already login: ',_connection.length)
 		if (_connection.length>0) {
 			return callback()
 		}
@@ -336,7 +336,7 @@ function exportDialogueFromDB(next){
 		}
 		var messengerDB=mongo.db('messenger')
 		
-		messengerDB.collection('dialogues').find({}).toArray(function(error,result){
+		messengerDB.collection('dialogues').find({}).sort({"time":1}).toArray(function(error,result){
 			if(error) {
 				throw(error)
 			}			
