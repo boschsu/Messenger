@@ -214,9 +214,6 @@ ws.on('request',function(request){
 							data:userColor
 						}))
 			        })
-			        // console.log(request.httpRequest.session)
-			        
-			        //console.log(request.httpRequest.session)
 			    });
 			    // console.log(userColor)
 				
