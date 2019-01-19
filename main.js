@@ -37,7 +37,7 @@ var sessionParser=expressSession({
 	}),
 	cookie:{
 		path:'/',
-		maxAge: 60000 * 60
+		maxAge: 60000 * 1
 	}
 })
 app.use(sessionParser)
@@ -51,6 +51,8 @@ var server=http.createServer(
 			var ip = request.clientIP;
 			var session=request.session;
 			if (url.parse(request.url).pathname=='/postlogin'){
+				// console.log(Object.keys(request))
+				//console.log(decodeURIComponent(request.headers.cookie.split('=')[1]))
 				var _data='';
 				request.on('data',function(data){
 					_data+=data;
@@ -69,7 +71,16 @@ var server=http.createServer(
 										response.end('{"name":"'+result.name+'"}')
 										break;
 									case 'login':
-										response.end('{"name":"'+_result.name+'"}')									
+										//getSessionFromDB(request.sessionID,function(data){
+											//if (data) {
+												response.end(
+													'{"name":"'+_result.name+'"}'
+												)	
+											//}else {
+											//	response.end();
+												//get invalid or expired
+											//}	
+										//})										
 										break;
 									default: 										
 										break;	
@@ -83,55 +94,59 @@ var server=http.createServer(
 					}
 				})
 			}else if(url.parse(request.url).pathname=='/getlogout'){
-				//console.log('Query: ',url.parse(request.url).query)
-				//console.log(session.username== querystring.parse( url.parse(request.url).query ).sid_name )
-				// clients.pop(_connection=clients.filter(function(data){
-				// 	return data.userName==session.username
-				// })[0]);
-				// _connection.userName=false;
-				// _connection.userColor=false;
+				var sid_name=querystring.parse( url.parse(request.url).query ).sid_name
+				beremove_clients=clients.filter(function(client){
+					var addr=null;
+					// if (client.userName===sid_name) {
+					// 	console.log('found ws connect and remove')
+					// 	addr=client.connection.remoteAddress
+					// 	clients.pop(client)
+					// 	console.log("Peer " + addr + " disconnected.");
+					// }
+					// return clients
 
-				//removeSessionFromDB(session.sid)
-				//console.log(_connection)
+					return client.userName===sid_name
+				})
+				console.log('clients length: ',clients.length)
+				console.log('beremove_clients length: ',beremove_clients.length)
+				beremove_clients.forEach(function(client){
+					client.connection.close()
+					clients.pop(client)
+				})
+				console.log('END clients length: ',clients.length)
+
 				response.writeHead(200,{
 					'Content-Type':'text/html'
 				});
 				response.end('logout success');
+			}else if (url.parse(request.url).pathname=='/postrefresh'){
+				var _data='';
+				request.on('data',function(data){
+					_data+=data;
+				})
+				request.on('end',function(){
+					response.writeHead(200, {'Content-Type': 'application/json'});
+					var _result=querystring.parse(_data)
+					var result=JSON.stringify(_result)
+					validateSessionFromDB(request.sessionID,decodeURIComponent(request.headers.cookie.split('=')[1].split(';')[0]),function(result){
+						console.log(result)
+						if (!result) {
+							response.end('');
+						}else {
+							response.end('refresh on valid');
+						}
+					})
+				})
 			}else {
-				//console.log( url.parse(request.url).pathname )
-				//console.log( path.basename(request.url) )				
 				var fileName=path.basename(request.url) || 'index.html';
-				// console.log(fileName)
 				fileName=path.basename(request.url).indexOf('?')==0
 					?'index.html'
 					:path.basename(request.url)==''
 						?'index.html'
 						:path.basename(request.url);
-				// console.log(fileName)
 				var fullPath=__dirname+'/src/'+fileName;
 				console.log('Request for '+fullPath+' received.\r\n------Client ip is '+ip);
-				// console.log(session)
-				// if (!session.username) {
-					
-				// }else {
-				// 	var username=session.username
-				// 	var usercolor=session.usercolor
-				// 	exportDialogueFromDB(function(result){
-				// 		if (result.length>0) {
-				// 			// console.log(clients.filter(function(data){
-				// 			// 	return data.userName==username
-				// 			// }))
-				// 			// clients.filter(function(data){
-				// 			// 	return data.userName==username
-				// 			// })[0].connection.sendUTF(JSON.stringify({
-				// 			// 	type:'history',
-				// 			// 	data:result,
-				// 			// 	name:username,
-				// 			// 	color:usercolor
-				// 			// }))
-				// 		}
-				// 	})
-				// }
+
 				fs.readFile(fullPath,function(error,fileBinary){
 					if (error){
 						console.log(error);
@@ -176,7 +191,6 @@ ws.on('request',function(request){
 	// console.log('clients index: ',index)
 	connection.on('message',function(message){
 		if (message.type==='utf8') {
-			//console.log(clients[index])
 			if (clients[index].userName===false) {
 				userName=htmlEntities(message.utf8Data);
 				//userColor=colors.shift()
@@ -188,8 +202,8 @@ ws.on('request',function(request){
 				        	:request.httpRequest.session.usercolor				        
 					request.httpRequest.session.usercolor=userColor
 					// console.log(request.cookies)
-					request.httpRequest.session.sid=request.cookies[0].value
-					// console.log(request.httpRequest.session.sid)
+					request.httpRequest.session.cid=request.cookies[0].value
+					// console.log(request.httpRequest.session.cid)
 			        request.httpRequest.session.save(function(error){
 			        	if (error) {
 			        		console.log("SESSION SAVE ERROR:",error)
@@ -208,7 +222,7 @@ ws.on('request',function(request){
 				
 				clients[index].userName=userName
 				clients[index].userColor=userColor
-				// console.log(clients[index])
+				//console.log(clients[index].userName)
 				
 				exportDialogueFromDB(function(result){
 					if (result.length>0) {
@@ -238,15 +252,17 @@ ws.on('request',function(request){
 					clients[i].connection.sendUTF(json)//boradcast message to all connections
 				}
 			}
-		}
+		}		
 	})
 
 	connection.on('close', function(connection) {
 		if (userName !== false && userColor !== false) {
-			console.log((new Date()) + " Peer "
-				+ clients[index].connection.remoteAddress + " disconnected.");
+			console.log('CLOSE clients length: ',clients.length)
+			// console.log('client index: ',index)
+			// console.log('client: ',clients[index])
+			
 			// remove user from the list of connected clients
-			clients.splice(index, 1);
+			//clients.splice(index, 1);
 			// push back user's color to be reused by another user
 			colors.push(userColor);
 		}
@@ -266,6 +282,7 @@ function insertOneToDB(entry,callback){
 		});
 		// console.log('Already login: ',_connection.length)
 		if (_connection.length>0) {
+			mongo.close();
 			return callback()
 		}
 
@@ -346,6 +363,41 @@ function exportDialogueFromDB(next){
 	})
 }
 
+function validateSessionFromDB(sid,cid,callback){
+	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
+		if (error) {
+			throw(error)
+		}
+		var messengerDB=mongo.db('messenger')
+		var _sid={
+			_id:sid
+		}
+		console.log('_sid: ',_sid)
+		console.log('cid: ',cid)
+		var datas=messengerDB.collection('sessions').findOne(_sid,function(error,result){
+			if (error) {
+				throw(error)
+			}
+			console.log('entry in db by sid: ',result)
+			if (!result) {
+				//sid invalid or expired
+				console.log('not found sid')
+				callback()
+			}else {
+				if (JSON.parse(result.session).cid!==cid) {
+					console.log('sid invalid')
+					callback();
+				}else {
+					console.log('sid valid')
+					callback('valid')
+				}				
+			}
+			mongo.close();
+		});
+	})
+
+}
+
 function removeSessionFromDB(sid){
 	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
 		if (error) {
@@ -366,6 +418,8 @@ function removeSessionFromDB(sid){
 						mongo.close();
 					})
 					
+				}else {
+					mongo.close();
 				}
 			
 		});

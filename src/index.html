@@ -125,13 +125,7 @@ $(function () {
         xhr.onreadystatechange=function(){
             if (xhr.readyState === 4 && xhr.status === 200) {
                 connection.close()
-                connection=undefined;
-                postlogin.show();
-                postlogin[0].reset()
-                control.hide();
-                content.empty();
-                myName = false
-                $.removeCookie('sid_name')
+                afterClose()
                 console.log(xhr.responseText)
                 // if (xhr.responseText!=='') {
                 //     var result=JSON.parse(xhr.responseText);
@@ -142,6 +136,16 @@ $(function () {
             }
         }        
         xhr.send();
+    }
+
+    function afterClose(){
+        connection=undefined;
+        postlogin.show();
+        postlogin[0].reset()
+        control.hide();
+        content.empty();
+        myName = false
+        $.removeCookie('sid_name')
     }
 
     // my color assigned by the server
@@ -224,6 +228,7 @@ $(function () {
         };
 
         connection.onclose =function(e){
+            afterClose();
             alert("WebSocket is closed now.",e);
         }
     }
@@ -300,7 +305,24 @@ $(function () {
 
     function getDataWhenRefresh(){
         if ($.cookie('sid_name')!==undefined) {
-            sendMessenger($.cookie('sid_name'))
+            //sendMessenger($.cookie('sid_name'))
+            var xhr=new XMLHttpRequest();
+            xhr.open('post', 'postrefresh', true);
+            xhr.onreadystatechange=function(){
+                if (xhr.readyState === 4 && xhr.status === 200) {
+                    console.log(xhr.responseText)
+                    if (xhr.responseText==='refresh on valid') {
+                        //var result=JSON.parse(xhr.responseText);
+                        if (connection==undefined) {
+                            connectToWebsocket(function(){afterAuth($.cookie('sid_name'))})
+                        }                        
+                    }else {
+                        console.log('validation failed.')
+                    }
+                }
+            }
+            xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");//declare this is a form
+            xhr.send('sid_name='+$.cookie('sid_name'));
         }
     }
 
@@ -311,10 +333,10 @@ $(function () {
 
     //init
     if ($.cookie('sid_name')!==undefined){
-        if (connection==undefined) {
-            connectToWebsocket(getDataWhenRefresh)
-        }
-        
+        //if (connection==undefined) {
+            //connectToWebsocket(getDataWhenRefresh)
+            getDataWhenRefresh();
+        //}        
     }
 });
 </script>
