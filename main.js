@@ -107,13 +107,13 @@ var server=http.createServer(
 
 					return client.userName===sid_name
 				})
-				console.log('clients length: ',clients.length)
-				console.log('beremove_clients length: ',beremove_clients.length)
+				// console.log('clients length: ',clients.length)
+				// console.log('beremove_clients length: ',beremove_clients.length)
 				beremove_clients.forEach(function(client){
 					client.connection.close()
 					clients.pop(client)
 				})
-				console.log('END clients length: ',clients.length)
+				// console.log('END clients length: ',clients.length)
 
 				response.writeHead(200,{
 					'Content-Type':'text/html'
@@ -129,7 +129,7 @@ var server=http.createServer(
 					var _result=querystring.parse(_data)
 					var result=JSON.stringify(_result)
 					validateSessionFromDB(request.sessionID,decodeURIComponent(request.headers.cookie.split('=')[1].split(';')[0]),function(result){
-						console.log(result)
+						// console.log(result)
 						if (!result) {
 							response.end('');
 						}else {
@@ -254,7 +254,8 @@ ws.on('request',function(request){
 
 	connection.on('close', function(connection) {
 		if (userName !== false && userColor !== false) {
-			console.log('CLOSE clients length: ',clients.length)
+			clients.splice(index, 1);
+			// console.log('CLOSE clients length: ',clients.length)
 			// console.log('client index: ',index)
 			// console.log('client: ',clients[index])
 			
@@ -369,13 +370,13 @@ function validateSessionFromDB(sid,cid,callback){
 		var _sid={
 			_id:sid
 		}
-		console.log('_sid: ',_sid)
-		console.log('cid: ',cid)
+		// console.log('_sid: ',_sid)
+		// console.log('cid: ',cid)
 		var datas=messengerDB.collection('sessions').findOne(_sid,function(error,result){
 			if (error) {
 				throw(error)
 			}
-			console.log('entry in db by sid: ',result)
+			// console.log('entry in db by sid: ',result)
 			if (!result) {
 				//sid invalid or expired
 				console.log('not found sid')
