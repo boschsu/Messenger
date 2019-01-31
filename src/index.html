@@ -12,16 +12,21 @@
 
         p { line-height:1.6; }
         label {    display: block;}
-        #conversation_control {display: none;}
-        #conversation_board {padding: 5px 10px;background: #ddd;border-radius: 5px;overflow-y: scroll;border: 1px solid #CCC;margin-top: 10px;min-height: 20vh;max-height: 50vh;}
+        .conversation_control {display: none;}
+        .conversation_board {padding: 5px 10px;background: #ddd;border-radius: 5px;overflow-y: scroll;border: 1px solid #CCC;margin-top: 10px;min-height: 20vh;max-height: 50vh;}
         .button {border: 0;background: dodgerblue;text-align: center;color: #fff;padding: 10px;border-radius: 5px;display: block;margin: 10px auto;width: 100%;}
         .input_text {border-radius: 5px;border: 1px solid #ccc;margin-top: 10px;padding: 10px;width: 100%;}
+        .author {font-style: normal;cursor: pointer;}
         #status {display:inline-block;}
         #getlogout {height: 12px;vertical-align: middle;border: 0;background: dodgerblue;color: #fff;padding: 1px 3px;font-size: 10px;line-height: 10px;margin-left: 10px;}
         #play {display: none;}
+        #status_bar {display: none;}
+        #conversation_board,
+        #private_room {display: none;}
+        #room_keeper > li.current {font-weight: bold;}
 
         @media screen and (max-width:480px) {
-            #conversation_board {padding: 1vw 2vw;margin-top: 2vw;}
+            .conversation_board {padding: 1vw 2vw;margin-top: 2vw;}
             .button {max-height: 8vw;padding: 2vw 20vw;border-radius: 1vw;margin: 2vw auto;}
             .input_text {border-radius: 1vw;margin-top: 2vw;padding: 2vw;max-height:8vw;}
             #status {max-height: 5vw;}
@@ -34,19 +39,32 @@
 
 <body>
 
-<form action="postlogin" method="post" id="postlogin" enctype=>
-    <label>Name: <input class="input_text" type="text" name="name" placeholder="Type your name here" /></label><br />
-    <label>Password: <input class="input_text" type="password" name="password" placeholder="Type your password here" /></label>
-    <input class="button" type="submit" value="Done" />
-</form>
-
-<section id="conversation_control">
+<section id="status_bar">
     <span id="status">Connecting...</span><button id="getlogout">Logout</button>
     <input class="input_text" id="input_messenger" type="text" disabled="disabled" />
+</section>
+
+<section id="conversation_control" class="conversation_control">
     <button class="button" id="send_messenger">发送</button>
 </section>
 
-<div id="conversation_board"></div>
+<section id="public_room">
+    <form action="postlogin" method="post" id="postlogin" enctype=>
+        <label>Name: <input class="input_text" type="text" name="name" placeholder="Type your name here" /></label><br />
+        <label>Password: <input class="input_text" type="password" name="password" placeholder="Type your password here" /></label>
+        <input class="button" type="submit" value="Done" />
+    </form>
+
+    <div id="conversation_board" class="conversation_board"></div>
+</section>
+
+<section id="private_room">
+    <!-- <div id="conversation_board_private" class="conversation_board"></div> -->
+</section>
+
+<ul id="room_keeper">
+    <li data-target='public' class="current">Public room</li>
+</ul>
 
 <button id="play">Play</button>
 
@@ -77,13 +95,22 @@ $(function () {
         return o;
     };
 
+    const fullday=86400000;
+
     var control=$('#conversation_control');
     var content = $('#conversation_board');
+    var privaterooms=[]
+    var _content=content;
     var input = $('#input_messenger');
     var send = $('#send_messenger');
     var status = $('#status');
+    var statusbar=$('#status_bar');
     var postlogin=$('#postlogin');
     var getlogout=$('#getlogout');
+    var publicroom=$('#public_room');
+    var privateroom=$('#private_room');
+    var roomkeeper=$('#room_keeper');
+
     
     postlogin.on('submit',function(e){
         e.preventDefault();
@@ -98,6 +125,7 @@ $(function () {
                     var result=JSON.parse(xhr.responseText);
                     if (connection==undefined) {
                         connectToWebsocket(function(){afterAuth(result.name)})
+                        afterclosesign=false
                     }
                     
                 }else {
@@ -111,11 +139,16 @@ $(function () {
 
     function afterAuth(name){
         postlogin.hide();
+        statusbar.show();
         control.show();
+        content.show();
         sendMessenger(name);
     }
 
-    function logout(){        
+    function logout(){
+        if ($.cookie('sid_name')===undefined){
+            return false;
+        }
         var xhr=new XMLHttpRequest();
         xhr.open(
             'get', 
@@ -124,7 +157,9 @@ $(function () {
         );
         xhr.onreadystatechange=function(){
             if (xhr.readyState === 4 && xhr.status === 200) {
-                connection.close()
+                if (connection!==undefined) {
+                    connection.close()
+                }
                 afterClose()
                 console.log(xhr.responseText)
                 // if (xhr.responseText!=='') {
@@ -137,15 +172,30 @@ $(function () {
         }        
         xhr.send();
     }
-
-    function afterClose(){
+    var afterclosesign=false;
+    function afterClose(e){
+        if (afterclosesign===true) {
+            return false;
+        }
         connection=undefined;
         postlogin.show();
-        postlogin[0].reset()
+        postlogin[0].reset();
+        statusbar.hide();
         control.hide();
-        content.empty();
+        _content.empty();
+        content.hide();
+        privaterooms.forEach(function(room){
+            room.ref.hide();    
+        })
+        _content=content;
+        publicroom.show();
+        privateroom.hide();
+        var _room=roomkeeper.children().eq(0)
+        roomkeeper.html(_room)
         myName = false
         $.removeCookie('sid_name')
+        afterclosesign=true;
+        alert("WebSocket is closed now.",e);
     }
 
     // my color assigned by the server
@@ -209,8 +259,13 @@ $(function () {
                 //console.log('history received')
                 // insert every single message to the chat window
                 for (var i=0; i < json.data.length; i++) {
-                    addMessage(json.data[i].author, json.data[i].text,
-                               json.data[i].color, new Date(json.data[i].time));
+                    addMessage(
+                        json.data[i].author, 
+                        json.data[i].text,
+                        json.data[i].color, 
+                        new Date(json.data[i].time),
+                        json.origin
+                    );
                 }
                 postlogin.hide();
                 control.show();
@@ -219,8 +274,13 @@ $(function () {
                 }
             } else if (json.type === 'message') { // it's a single message
                 input.removeAttr('disabled'); // let the user write another message
-                addMessage(json.data.author, json.data.text,
-                           json.data.color, new Date(json.data.time));
+                addMessage(
+                    json.data.author, 
+                    json.data.text,
+                    json.data.color, 
+                    new Date(json.data.time),
+                    json.origin
+                );
                 setTimeout(function(){input.focus();$('#play').click();},0);
             } else {
                 console.log('Hmm..., I\'ve never seen JSON like this: ', json);
@@ -228,8 +288,7 @@ $(function () {
         };
 
         connection.onclose =function(e){
-            afterClose();
-            alert("WebSocket is closed now.",e);
+            afterClose(e);            
         }
     }
 
@@ -238,18 +297,134 @@ $(function () {
      */
     send.on('click',function(e) {
         //if (e.keyCode === 13) {
-            sendMessenger()
+            if ($.cookie('sid_name')!==undefined) {
+                sendMessenger()
+            }else {
+                if (connection!==undefined) {
+                    connection.close()
+                }
+            }
         //}
     });
     input.on('keyup',function(e) {
         if (e.keyCode === 13) {
-            sendMessenger()
+            if ($.cookie('sid_name')!==undefined) {
+                sendMessenger()
+            }else {
+                if (connection!==undefined) {
+                    connection.close()
+                }
+            }
         }
     });
 
     getlogout.on('click',function(e){
         logout();
     })
+
+    roomkeeper.on('click','li',function(e){
+        if ($.cookie('sid_name')===undefined){
+            logout();
+            return false;
+        }
+        if ($(this).hasClass('current')===true){
+            return false;
+        //}else if (roomkeeper.children('[data-target='+$(this).attr('data-target')+']').length===1){
+        //    changeRoom($(this).attr('data-target'))
+        }else {
+            validationIdentity($(this).attr('data-target'))            
+        }
+    })
+
+    let previous_targetName=''
+    function changeRoom(targetName){
+        if (targetName==='public'){
+            // privaterooms.filter(function(room){
+            //     return room.name===previous_targetName
+            // })[0].ref.hide()
+            privateroom.hide();
+            publicroom.show();
+            roomkeeper.children('.current').removeClass('current')
+            roomkeeper.children().eq(0).addClass('current')
+            _content=content;
+        }else {
+            privateroom.show();
+            publicroom.hide();
+            if (roomkeeper.children('[data-target='+targetName+']').length===0){
+                roomkeeper.append('<li class="current" data-target='+targetName+'>'+targetName+'</li>')
+                var _newboard=$('<div class="conversation_board"></div>')
+                privateroom.append(_newboard)
+                privaterooms.push({
+                    name:targetName,
+                    ref:_newboard
+                })
+                privateroom.children().hide();
+                privaterooms.filter(function(room){
+                    return room.name===targetName
+                })[0].ref.show();
+            }else {//if exist
+                privateroom.children().hide();
+                privaterooms.filter(function(room){
+                    return room.name===targetName
+                })[0].ref.show();                
+            }
+            roomkeeper.children('.current').removeClass('current')
+            roomkeeper.children('[data-target='+targetName+']').addClass('current')
+            _content=privaterooms.filter(function(room){
+                return room.name===targetName
+            })[0].ref
+        }
+        previous_targetName=targetName
+    }
+
+    content.on('click','i.author',function(e){
+        if ($.cookie('sid_name')===undefined){
+            logout();
+            return false;
+        }
+        if ($.cookie('sid_name')===this.textContent) {
+            console.log('can\'t send msg to self.')
+            return false;
+        }
+        validationIdentity(this.textContent)
+    })
+
+    function validationIdentity(targetName){
+        var xhr=new XMLHttpRequest();
+        var _type='private'
+        if (targetName==='public') {
+            _type='public'
+        }
+        xhr.open('post', 'postchangeroom', true);
+        xhr.onreadystatechange=function(){
+            if (xhr.readyState === 4 && xhr.status === 200) {
+                console.log(xhr.responseText)
+                if (xhr.responseText!=='') {                    
+                    changeRoom(targetName,_type);
+                }else {
+                    logout();
+                    console.log('invalid sid. Private conversation failed.')
+                }
+            }
+        }
+        xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");//declare this is a form
+        xhr.send("type="+_type+"&hostname="+$.cookie('sid_name')+"&guestname="+targetName);        
+    }
+
+    // function beforePrivateSend(targetName,_type){
+    //     publicroom.hide();
+    //     privateroom.show();
+    //     privaterooms.show();
+    //     roomkeeper.children('.current').removeClass('current')
+    //     if (roomkeeper.children('[data-target='+targetName+']').length===0){
+    //         roomkeeper.append('<li class="current" data-target='+targetName+'>'+targetName+'</li>')
+    //     }
+    //     if (_type==='private') {
+    //         _content=privaterooms
+    //     }else {
+    //         _content=content;
+    //     }
+    // }
 
     function sendMessenger(msg){
         var msg = msg|| input.val();
@@ -263,12 +438,15 @@ $(function () {
         // sends back response
         input.attr('disabled', 'disabled');
 
-        // we know that the first message sent from a user their name
+        // login
         if (myName === false) {
             myName = msg;
-            //console.log($.cookie('sid_name')===undefined)
+
             if ($.cookie('sid_name')===undefined) {
-                $.cookie('sid_name',myName)
+                $.cookie('sid_name',myName, { expires: 1/1440, path: '/' })
+                setTimeout(function(){
+                    logout()
+                },1/1440*fullday-1000)
             }
         }
     }
@@ -289,13 +467,44 @@ $(function () {
     /**
      * Add message to the chat window
      */
-    function addMessage(author, message, color, timestamp) {
-        content.prepend(
+    function addMessage(author, message, color, timestamp, room) {
+        if (room==='public') {
+            _content=content
+        }else if (room===undefined){
+            
+        }else {
+            if (roomkeeper.children('[data-target='+room+']').length===0){
+                var _tmp='<li data-target='+room+'>'+room+'</li>';
+                roomkeeper.append(_tmp)
+                // console.log(privaterooms)
+                // var targetContent=privaterooms.filter(function(room){
+                //     return room.name===room
+                // }).ref
+                // if (targetContent === undefined) {
+                    var _newboard=$('<div class="conversation_board"></div>')
+                    privateroom.append(_newboard)
+                    privaterooms.push({
+                        name:room,
+                        ref:_newboard
+                    })
+                    _content=privaterooms.filter(function(_room){
+                        return _room.name===room
+                    })[0].ref
+                    
+                // }
+            }else {
+                _content=privaterooms.filter(function(_room){
+                    return _room.name===room
+                })[0].ref
+            }
+        }
+
+        _content.prepend(
             '<p><span style="color:' 
             + color 
-            + '">' 
+            + '"><i class="author">' 
             + author 
-            + '</span> @ ' 
+            + '</i></span> @ ' 
             + new Date(timestamp).toLocaleString()
             + ': ' 
             + message 
@@ -315,6 +524,7 @@ $(function () {
                         //var result=JSON.parse(xhr.responseText);
                         if (connection==undefined) {
                             connectToWebsocket(function(){afterAuth($.cookie('sid_name'))})
+                            afterclosesign=false
                         }                        
                     }else {
                         console.log('validation failed.')
