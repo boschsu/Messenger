@@ -103,6 +103,7 @@ var server=http.createServer(
 					clients.filter(function(client){
 						return client.userName===sid_name
 					}).forEach(function(_client){
+						websocket_close_flag=true;
 						_client.connection.close()
 					})
 
@@ -246,6 +247,7 @@ var ws=new websocketServer({
 var history=[];
 var clients=[];
 var db_collection_pointer='dialogues';
+var websocket_close_flag=false;
 
 ws.on('request',function(request){
 	var connection=request.accept(null,request.origin)
@@ -374,7 +376,10 @@ ws.on('request',function(request){
 
 	connection.on('close', function(connection) {
 		if (userName !== false && userColor !== false) {
-			//clients.splice(index, 1);
+			if (websocket_close_flag===true) {
+				websocket_close_flag=false;
+				clients.splice(index, 1);
+			}
 			console.log('CLOSING, now clients length: ',clients.length)
 			// console.log('client index: ',index)
 			// console.log('client: ',clients[index])
