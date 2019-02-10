@@ -375,9 +375,10 @@ ws.on('request',function(request){
 	})
 
 	connection.on('close', function(connection) {
+		console.log('someone close client',userName,userColor)
 		if (userName !== false && userColor !== false) {
-			if (websocket_close_flag===true) {
-				websocket_close_flag=false;
+			if (websocket_close_flag===false) {
+				console.log('Ready for splice websocket client')
 				clients.splice(index, 1);
 			}
 			console.log('CLOSING, now clients length: ',clients.length)
@@ -388,6 +389,8 @@ ws.on('request',function(request){
 			//clients.splice(index, 1);
 			// push back user's color to be reused by another user
 			colors.push(userColor);
+
+			websocket_close_flag=false;
 		}
 	});
 })
