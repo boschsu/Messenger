@@ -18,6 +18,7 @@ var expressSession = require('express-session')
 var cookieParser = require('cookie-parser')
 var MongoStore=require('connect-mongo')(expressSession)
 var http=require('http');
+var https=require('https');
 var fs=require('fs');
 var path=require('path');
 var url=require('url');
@@ -42,10 +43,12 @@ var sessionParser=expressSession({
 })
 app.use(sessionParser)
 
-var server=http.createServer(
-	
-	app.use(
-
+var server=https.createServer(
+	{
+		key: fs.readFileSync('./certificate/privatekey.pem'),
+		cert: fs.readFileSync('./certificate/certificate.pem')
+	},
+	app.use(		
 		function(request,response){
 
 			var ip = request.clientIP;
