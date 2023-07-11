@@ -51,7 +51,7 @@
 </section>
 
 <section id="public_room">
-    <form action="postlogin" method="post" id="postlogin" enctype=>
+    <form action="postlogin" method="post" id="postlogin" enctype="">
         <label>Name: <input class="input_text" type="text" name="name" placeholder="Type your name here" /></label><br />
         <label>Password: <input class="input_text" type="password" name="password" placeholder="Type your password here" /></label>
         <input class="button" type="submit" value="Done" />
@@ -87,7 +87,7 @@
 </div>
 
 <script type="text/javascript">
-var msg_audio=new Audio('https://interactive-examples.mdn.mozilla.net/media/examples/t-rex-roar.mp3');
+var msg_audio=new Audio('https://assets.mixkit.co/active_storage/sfx/1491/1491-preview.mp3');
     
 $(function () {
     "use strict";
@@ -95,7 +95,8 @@ $(function () {
         msg_audio.play()    
     })
     
-    var url='wss://192.168.2.101:3001';
+    var url='wss://localhost:3001';
+    var api_url='https://localhost:3001/';
 
     $.fn.serializeObject = function(){
         var o = {};
@@ -129,7 +130,6 @@ $(function () {
     var privateroom=$('#private_room');
     var roomkeeper=$('#room_keeper');
     var loadingscreen=$('#loading_screen');
-
     
     postlogin.on('submit',function(e){
         e.preventDefault();
@@ -137,7 +137,8 @@ $(function () {
         msg_audio.load();
         loadingscreen.show();
         var xhr=new XMLHttpRequest();
-        xhr.open('post', 'postlogin', true);
+        xhr.open('post', api_url+'postlogin', true);
+        xhr.withCredentials = true;
         xhr.onreadystatechange=function(){
             if (xhr.readyState === 4 && xhr.status === 200) {
                 loadingscreen.hide();
@@ -171,13 +172,13 @@ $(function () {
     }
 
     function logout(){
-        if ($.cookie('sid_name')===undefined){
-            return false;
-        }
+        // if ($.cookie('sid_name')===undefined){
+        //     return false;
+        // }
         var xhr=new XMLHttpRequest();
         xhr.open(
             'get', 
-            'getlogout?sid_name='+$.cookie('sid_name'), 
+            api_url+'getlogout?sid_name='+$.cookie('sid_name'), 
             true
         );
         xhr.onreadystatechange=function(){
@@ -252,7 +253,7 @@ $(function () {
 
             if (onopen_callback) {
                 onopen_callback();
-            }            
+            }
         };
 
         connection.onerror = function (error) {
@@ -281,6 +282,7 @@ $(function () {
                 input.removeAttr('disabled').focus();
                 // from now user can start sending messages
             } else if (json.type === 'history') { // entire message history
+                clearMessage(json.origin);
                 //console.log('history received')
                 // insert every single message to the chat window
                 for (var i=0; i < json.data.length; i++) {
@@ -420,7 +422,8 @@ $(function () {
         if (targetName==='public') {
             _type='public'
         }
-        xhr.open('post', 'postchangeroom', true);
+        xhr.open('post', api_url+'postchangeroom', true);
+        xhr.withCredentials = true;
         xhr.onreadystatechange=function(){
             if (xhr.readyState === 4 && xhr.status === 200) {
                 console.log(xhr.responseText)
@@ -466,12 +469,12 @@ $(function () {
         // login
         if (myName === false) {
             myName = msg;
-
+            var minutes=.25;//cookie sid_name expired time
             if ($.cookie('sid_name')===undefined) {
-                $.cookie('sid_name',myName, { expires: 1/1440, path: '/' })
+                $.cookie('sid_name',myName, { expires: minutes/1440, path: '/' })
                 setTimeout(function(){
                     logout()
-                },1/1440*fullday-1000)
+                },1/1440*fullday*minutes)
             }
         }
     }
@@ -537,11 +540,22 @@ $(function () {
         );
     }
 
+    function clearMessage(room){
+        if (room==='public' || room===undefined) {
+            publicroom[0].lastElementChild.innerHTML='';
+        }else {
+            if (privateroom[0].firstElementChild) {
+                privateroom[0].firstElementChild.innerHTML='';
+            }
+        }
+    }
+
     function getDataWhenRefresh(){
         if ($.cookie('sid_name')!==undefined) {
             //sendMessenger($.cookie('sid_name'))
             var xhr=new XMLHttpRequest();
-            xhr.open('post', 'postrefresh', true);
+            xhr.open('post', api_url+'postrefresh', true);
+            xhr.withCredentials = true;
             xhr.onreadystatechange=function(){
                 if (xhr.readyState === 4 && xhr.status === 200) {
                     console.log(xhr.responseText)

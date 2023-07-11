@@ -38,18 +38,26 @@ var sessionParser=expressSession({
 	}),
 	cookie:{
 		path:'/',
-		maxAge: 60000 * 1
+		maxAge: 60000 * .25 //cookie in browser connect.sid expired time, is the session created by express session expired time either.
 	}
 })
 app.use(sessionParser)
 
 var server=https.createServer(
 	{
-		key: fs.readFileSync('./certificate/privatekey.pem'),
-		cert: fs.readFileSync('./certificate/certificate.pem')
+		key: fs.readFileSync('./certification/localhost-key.pem'),
+		cert: fs.readFileSync('./certification/localhost-crt.pem'),
+		passphrase: "****1_______",
 	},
 	app.use(		
 		function(request,response){
+
+			// Set CORS headers
+			response.setHeader('Access-Control-Allow-Origin', 'https://localhost:8080');
+			response.setHeader('Access-Control-Request-Method', '*');
+			response.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET, POST');
+			response.setHeader('Access-Control-Allow-Headers', request.headers.origin);
+			response.setHeader('Access-Control-Allow-Credentials', true);
 
 			var ip = request.clientIP;
 			var session=request.session;
@@ -57,7 +65,7 @@ var server=https.createServer(
 			switch (url.parse(request.url).pathname) {
 				case '/postlogin':
 					// console.log(Object.keys(request))
-					//console.log(decodeURIComponent(request.headers.cookie.split('=')[1]))
+					// console.log(decodeURIComponent(request.headers.cookie.split('=')[1]))
 					var _data='';
 					request.on('data',function(data){
 						_data+=data;
@@ -89,8 +97,7 @@ var server=https.createServer(
 											break;
 										default: 										
 											break;	
-									}
-									
+									}									
 								}
 							})
 						}else {
@@ -160,43 +167,45 @@ var server=https.createServer(
 										guest:_result.guestname	
 									}
 								},function(_databaseCollection,status){
-									// if (status==='export') {
-									// 	var _connection=clients.filter(function(data){
-									// 		return data.userName===_result.hostname
-									// 	});
-									// 	if (_connection.length>0){										
-									// 		_connection.forEach(function(_this){
-									// 			exportDialogueFromDB(function(result){
-									// 				if (result.length>0) {
-									// 					_this.connection.sendUTF(JSON.stringify({
-									// 						origin:_result.guestname,
-									// 						type:'history',
-									// 						data:result
-									// 					}))
-									// 				}
-									// 			},{
-									// 				databaseCollection:_databaseCollection
-									// 			})
-									// 		})
-									// 	}
-									// }
-									// var _connection=clients.filter(function(data){
-									// 	return data.userName===_result.hostname||data.userName===_result.guestname
-									// });
-									// if (_connection.length>0){										
-									// 	_connection.forEach(function(_this){
-									// 		exportDialogueFromDB(function(result){
-									// 			if (result.length>0) {
-									// 				_this.connection.sendUTF(JSON.stringify({
-									// 					type:'history',
-									// 					data:result
-									// 				}))
-									// 			}
-									// 		},{
-									// 			databaseCollection:_databaseCollection
-									// 		})
-									// 	})
-									// }
+									if (status==='export') {
+										var _connection=clients.filter(function(data){
+											return data.userName===_result.hostname
+										});
+										if (_connection.length>0){										
+											_connection.forEach(function(_this){
+												exportDialogueFromDB(function(result){
+													console.log('sendUTF from changeCollectionFromDB status===\'export\'')
+													if (result.length>0) {
+														_this.connection.sendUTF(JSON.stringify({
+															origin:_result.guestname,
+															type:'history',
+															data:result
+														}))
+													}
+												},{
+													databaseCollection:_databaseCollection
+												})
+											})
+										}
+									}
+									var _connection=clients.filter(function(data){
+										return data.userName===_result.hostname||data.userName===_result.guestname
+									});
+									if (_connection.length>0 && status!=='export'){										
+										_connection.forEach(function(_this){
+											exportDialogueFromDB(function(result){
+												console.log('sendUTF from changeCollectionFromDB')
+												if (result.length>0) {
+													_this.connection.sendUTF(JSON.stringify({
+														type:'history',
+														data:result
+													}))
+												}
+											},{
+												databaseCollection:_databaseCollection
+											})
+										})
+									}
 									clients.filter(function(data){
 										return data.userName===_result.hostname
 									})[0].databaseCollection=_databaseCollection
@@ -268,6 +277,7 @@ ws.on('request',function(request){
 	// console.log('clients index: ',index)
 	connection.on('message',function(message){
 		if (message.type==='utf8') {
+			console.log( clients )
 			if (clients[index].userName===false) {
 				userName=htmlEntities(message.utf8Data);
 				//userColor=colors.shift()
@@ -298,7 +308,7 @@ ws.on('request',function(request){
 				clients[index].userColor=userColor
 				//console.log(clients[index].userName)
 				
-				inquirePrivateDialoguesFromDB(userName,function(inquireResult){					
+				inquirePrivateDialoguesFromDB(userName,function(inquireResult){	
 					// inquireResult.forEach(function(result){
 					// 	result.forEach(function(entry){
 					// 		clients[index].databaseCollection.private.push({
@@ -308,6 +318,7 @@ ws.on('request',function(request){
 					// 	})
 					// })
 					exportDialogueFromDB(function(result,targetName){
+						console.log('sendUTF from inquirePrivateDialoguesFromDB')
 						if (result.length>0) {
 							connection.sendUTF(JSON.stringify({
 								origin:targetName,
@@ -332,9 +343,6 @@ ws.on('request',function(request){
 					databaseCollection:clients[index].databaseCollection
 				});
 				history=history.slice(-100)
-
-				
-
 
 				if (clients[index].databaseCollection===db_collection_pointer) {
 					var json=JSON.stringify({
@@ -398,6 +406,10 @@ ws.on('request',function(request){
 	});
 })
 
+function getCollectionName(entry){
+	return entry.s.namespace.collection
+}
+
 function inquirePrivateDialoguesFromDB(userName,callback){
 	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
 		if (error) {
@@ -405,27 +417,34 @@ function inquirePrivateDialoguesFromDB(userName,callback){
 		}
 		var messengerDB=mongo.db('messenger')
 
+		
+
 		findOneFromDB(userName,function(uid){
 			messengerDB.collections(function(error,result){
 				var hasprivate=false;
 				result.forEach(function(entry){
-					if (entry.s.name.indexOf(uid)>-1){
-						hasprivate=true;
-					}
+					if (getCollectionName(entry).indexOf(uid)>-1) {
+						// messengerDB.collection(entry.s.namespace.collection).find().forEach(item=>{
+							// console.log(item)
+							// if (item.name.indexOf(uid)>-1){
+								hasprivate=true;
+							// }	
+						// })	
+					}					
 				})
 
 				if (hasprivate===true) {
 					result.forEach(function(entry){
-						if (entry.s.name.indexOf(uid)>-1) {
+						if (getCollectionName(entry).indexOf(uid)>-1) {
 							var target_uid='';
-							if ( entry.s.name.indexOf('_host_'+uid)>-1 ){
-								target_uid=entry.s.name.split('_host_'+uid)[1].split('_guest_')[1]
-							}else if ( entry.s.name.indexOf('_guest_'+uid)>-1 ) {
-								target_uid=entry.s.name.split('_guest_'+uid)[0].split('dialogues_host_')[1]
+							if ( getCollectionName(entry).indexOf('_host_'+uid)>-1 ){
+								target_uid=getCollectionName(entry).split('_host_'+uid)[1].split('_guest_')[1]
+							}else if ( getCollectionName(entry).indexOf('_guest_'+uid)>-1 ) {
+								target_uid=getCollectionName(entry).split('_guest_'+uid)[0].split('dialogues_host_')[1]
 							}
 							findUidFromDB(target_uid,function(targetName){
 								callback({
-									collectionName:entry.s.name,
+									collectionName:getCollectionName(entry),
 									targetName:targetName
 								})							
 							})						
@@ -606,13 +625,13 @@ function changeCollectionFromDB(options,callback){
 					var collection_exist=[];
 					messengerDB.collections(function(error,collectionresult){
 						collection_exist=collectionresult.filter(function(entry){
-							if (entry.s.name.indexOf(result[0]._id)>-1 && entry.s.name.indexOf(result[1]._id)>-1) {
+							if (entry.s.namespace.collection.indexOf(result[0]._id)>-1 && entry.s.namespace.collection.indexOf(result[1]._id)>-1) {
 								return entry
 							}
 						})
 						if (collection_exist.length>0){
-							console.log(collection_exist[0].s.name)
-							callback(collection_exist[0].s.name,'export');
+							console.log(collection_exist[0].s.namespace.collection)
+							callback(collection_exist[0].s.namespace.collection,'export');
 						}else {
 							if (result[0].name===options.name.host) {
 								_databaseCollection='dialogues_host_'+result[0]._id+'_guest_'+result[1]._id	
@@ -643,22 +662,15 @@ function exportDialogueFromDB(next,options){
 			throw(error)
 		}
 		var messengerDB=mongo.db('messenger')
-
 		if (options.databaseCollection==='public') {
 			messengerDB.collection(db_collection_pointer).find({}).sort({"time":1}).toArray(function(error,result){
 				if(error) {
 					throw(error)
-				}						
+				}
 				next(result,'public')
 				mongo.close();
 			})
 		}else {
-			messengerDB.collection(db_collection_pointer).find({}).sort({"time":1}).toArray(function(error,result){
-				if(error) {
-					throw(error)
-				}						
-				next(result,'public')
-			})
 			messengerDB.collection(_db_collection_pointer).find({}).sort({"time":1}).toArray(function(error,result){
 				if(error) {
 					throw(error)
