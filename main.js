@@ -15,7 +15,7 @@ var MongoClient=require('mongodb').MongoClient;
 var ObjectID = require('mongodb').ObjectID;
 var connect = require('connect');
 var expressSession = require('express-session')
-var cookieParser = require('cookie-parser')
+// var cookieParser = require('cookie-parser')
 var MongoStore=require('connect-mongo')(expressSession)
 var http=require('http');
 var https=require('https');
@@ -28,17 +28,22 @@ var bcrypt=require('bcrypt')
 var app=connect();
 
 app.use(requestIp.mw({ attributeName : 'clientIP' }))
-app.use(cookieParser())
+// app.use(cookieParser())
 var sessionParser=expressSession({
 	secret: 'node messenger',
+	httpOnly: true, 
+    secure: true,
 	resave: false, 
 	saveUninitialized: true,
 	store:new MongoStore({
-		url:url_db
+		url:url_db,
+		// ttl: 1 * 1 * 2 * 60 * 1000
 	}),
 	cookie:{
-		path:'/',
-		maxAge: 60000 * .25 //cookie in browser connect.sid expired time, is the session created by express session expired time either.
+		sameSite: 'strict',
+	// 	secure: true,
+	// 	path:'/',
+		maxAge: 1 * 1 * 2 * 60 * 1000 //cookie in browser connect.sid expired time, is the session created by express session expired time either.
 	}
 })
 app.use(sessionParser)
@@ -50,61 +55,113 @@ var server=https.createServer(
 		passphrase: "****1_______",
 	},
 	app.use(		
-		function(request,response){
+		async function(request,response){
 
 			// Set CORS headers
-			response.setHeader('Access-Control-Allow-Origin', 'https://localhost:8080');
+			response.setHeader('Access-Control-Allow-Origin', 'https://192.168.31.27:3001');
 			response.setHeader('Access-Control-Request-Method', '*');
 			response.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET, POST');
-			response.setHeader('Access-Control-Allow-Headers', request.headers.origin);
+			response.setHeader('Access-Control-Allow-Headers', "Access-Control-Allow-Headers, Origin, Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers");
 			response.setHeader('Access-Control-Allow-Credentials', true);
 
 			var ip = request.clientIP;
 			var session=request.session;
+			var _data='';
+
+			request.on('data', function(data){//for next(), if no data listenser, will stuck the client request.
+				
+				_data+=data;
+				if (request.method!=='OPTIONS') {
+					// console.log('request body', _data)
+				}
+			});
 
 			switch (url.parse(request.url).pathname) {
+				case '/test-session':
+					if (request.method==='OPTIONS'){
+            			request.on('end', function(){
+		            		response.end('{"pre-light":"ok"}');
+		            	})
+            		}
+            		if (request.method==='POST'){
+            			request.on('end', function(){
+		            		response.end(JSON.stringify({
+		            			username: response.req.session.user || 'not found session',
+		            		}));
+		            	})
+					}
+					break;
 				case '/postlogin':
-					// console.log(Object.keys(request))
-					// console.log(decodeURIComponent(request.headers.cookie.split('=')[1]))
-					var _data='';
-					request.on('data',function(data){
-						_data+=data;
-					})
-					request.on('end',function(){
-						response.writeHead(200, {'Content-Type': 'application/json'});
-						var _result=querystring.parse(_data)
-						var result=JSON.stringify(_result)
-						if (validationData(_result)) {
-							insertOneToDB(_result,function(result,options){
-								if (!result) {
-									response.end('');//wrong password
-								}else {
-									switch(options.type) {
-										case 'register':
-											response.end('{"name":"'+result.name+'"}')
-											break;
-										case 'login':
-											//getSessionFromDB(request.sessionID,function(data){
-												//if (data) {
-													response.end(
-														'{"name":"'+_result.name+'"}'
-													)	
-												//}else {
-												//	response.end();
-													//get invalid or expired
-												//}	
-											//})										
-											break;
-										default: 										
-											break;	
-									}									
-								}
-							})
-						}else {
-							console.log('POST wrong data.')
-							return false;
-						}
-					})
+					if (request.method==='OPTIONS'){
+            			request.on('end', function(){
+		            		response.end('{"pre-light":"ok"}');
+		            	})
+            		}
+            		if (request.method==='POST'){
+            			request.on('end',function(){
+							response.writeHead(200, {'Content-Type': 'application/json'});
+							if (validationData(_data)) {
+								insertOneToDB(_data,async function(result,options){
+									console.log('insertOneToDB begin')
+									if (!result) {
+										response.end(JSON.stringify({
+											msg:'wrong password'
+										}));//wrong password
+									}else {
+										switch(options.type) {
+											case 'register':
+												response.req.session.user=result.name;//IMPORTANT... save the user id to session where store in DB
+												response.end('{"name":"'+result.name+'"}')
+												break;
+											case 'login':
+												response.req.session.user = result.name
+
+											    // try {
+											    //     await response.req.session.save();
+											    // } catch (err) {
+											    //     console.error('Error saving to session storage: ', err);
+											    //     return next(new Error('Error creating user'));
+											    // }
+												//getSessionFromDB(request.sessionID,function(data){
+													//if (data) {
+														response.end(
+															'{"name":"'+result.name+'"}'
+														)	
+													//}else {
+													//	response.end();
+														//get invalid or expired
+													//}	
+												//})										
+												break;
+											case 'failed':
+												response.end(
+													JSON.stringify({
+														msg:result
+													})
+												)
+												break;
+											default: 
+												response.end(
+													JSON.stringify({
+														msg:'unkown error'
+													})
+												)										
+												break;	
+										}									
+									}
+								})
+							}else {
+								response.end(
+									JSON.stringify({
+										msg:'POST wrong data.'
+									})
+								)
+								return false;
+							}
+						})
+            		}
+					
+					
 					break;
 				case '/getlogout':
 					var sid_name=querystring.parse( url.parse(request.url).query ).sid_name
@@ -275,33 +332,73 @@ ws.on('request',function(request){
 		targetName:null
 	})-1
 	// console.log('clients index: ',index)
+
+	function ping(client) {
+	    connection.sendUTF(JSON.stringify({
+			origin: 'Server',
+			type:'ping/pong',
+			data: 'ping'
+		}))
+  	}
+var ping_timer=null;
+var pong_timer=null;
+  	
+  	ping_timer=setTimeout(function(){
+  		ping();
+  		clearTimeout(pong_timer)	
+  		pong_timer=setTimeout(function(){  		
+	  		console.log('Ready for splice websocket client')
+			clients.splice(index, 1);
+		},10000)	
+	},5000)
+  	
+
 	connection.on('message',function(message){
+		console.log('message',message)
+		if (message.utf8Data==='pong') {
+			console.log('client ws alive.')
+			clearTimeout(pong_timer)
+			ping_timer=setTimeout(function(){
+		  		ping();
+		  		clearTimeout(pong_timer)
+		  		pong_timer=setTimeout(function(){  		
+			  		console.log('Ready for splice websocket client')
+					clients.splice(index, 1);
+				},10000)
+			},5000)
+		  	
+		}
 		if (message.type==='utf8') {
-			console.log( clients )
+			// console.log( clients )
 			if (clients[index].userName===false) {
 				userName=htmlEntities(message.utf8Data);
 				//userColor=colors.shift()
-				sessionParser(request.httpRequest, {}, function(){
-					request.httpRequest.session.username=userName
-					//console.log(request.httpRequest.session.usercolor)
-					userColor=request.httpRequest.session.usercolor===undefined
-				        	?colors.shift()
-				        	:request.httpRequest.session.usercolor				        
-					request.httpRequest.session.usercolor=userColor
-					// console.log(request.cookies)
-					request.httpRequest.session.cid=request.cookies[0].value
-					// console.log(request.httpRequest.session.cid)
-			        request.httpRequest.session.save(function(error){
-			        	if (error) {
-			        		console.log("SESSION SAVE ERROR:",error)
-			        	}
-
-			        	connection.sendUTF(JSON.stringify({
-							type:'color',
-							data:userColor
-						}))
-			        })
-			    });
+// 				sessionParser(
+// 					request.httpRequest, 
+// 					{}, 
+// 					function(){
+// 						console.log('request',request)
+// 						request.httpRequest.session.username=userName
+// 						//console.log(request.httpRequest.session.usercolor)
+// 						userColor=request.httpRequest.session.usercolor===undefined
+// 					        	?colors.shift()
+// 					        	:request.httpRequest.session.usercolor				        
+// 						request.httpRequest.session.usercolor=userColor
+// 						// console.log(request.cookies)
+// 						request.httpRequest.session.cid=request.cookies[0].value
+// 						// console.log(request.httpRequest.session.cid)
+// 				        request.httpRequest.session.save(function(error){
+// 				        	if (error) {
+// 				        		console.log("SESSION SAVE ERROR:",error)
+// 				        	}
+// 
+// 				        	connection.sendUTF(JSON.stringify({
+// 								type:'color',
+// 								data:userColor
+// 							}))
+// 				        })
+// 			    	}
+// 		    	);
 			    // console.log(userColor)
 				
 				clients[index].userName=userName
@@ -331,7 +428,8 @@ ws.on('request',function(request){
 						targetName:inquireResult.targetName
 					})
 				});
-			}else {
+			}
+			else {
 				console.log((new Date()) + ' Received Message from ' + userName + ': ' + message.utf8Data);
 				var obj={
 					time:(new Date()).getTime(),
@@ -404,6 +502,10 @@ ws.on('request',function(request){
 			websocket_close_flag=false;
 		}
 	});
+
+	connection.on('connect', function(connection){
+		
+	})
 })
 
 function getCollectionName(entry){
@@ -411,7 +513,7 @@ function getCollectionName(entry){
 }
 
 function inquirePrivateDialoguesFromDB(userName,callback){
-	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
+	MongoClient.connect(url_db,{ useNewUrlParser: true, useUnifiedTopology: true },function(error,mongo){
 		if (error) {
 			throw(error)
 		}
@@ -465,7 +567,7 @@ function inquirePrivateDialoguesFromDB(userName,callback){
 }
 
 function findOneFromDB(userName,callback){
-	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
+	MongoClient.connect(url_db,{ useNewUrlParser: true, useUnifiedTopology: true },function(error,mongo){
 		if (error) {
 			throw(error)
 		}
@@ -489,7 +591,7 @@ function findOneFromDB(userName,callback){
 }
 
 function findUidFromDB(uid,callback){
-	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
+	MongoClient.connect(url_db,{ useNewUrlParser: true, useUnifiedTopology: true },function(error,mongo){
 		if (error) {
 			throw(error)
 		}
@@ -513,7 +615,8 @@ function findUidFromDB(uid,callback){
 }
 
 function insertOneToDB(entry,callback){
-	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
+	let _entry=JSON.parse(entry);
+	MongoClient.connect(url_db,{ useNewUrlParser: true, useUnifiedTopology: true },function(error,mongo){
 		if (error) {
 			throw('step1:'+error)
 		}
@@ -521,31 +624,39 @@ function insertOneToDB(entry,callback){
 
 		//excute already login		
 		var _connection=clients.filter(function(data){
-			return data.userName==entry.name
+			return data.userName==_entry.name
 		});
 		// console.log('Already login: ',_connection.length)
 		if (_connection.length>0) {
 			mongo.close();
-			return callback()
+			return callback('WS already login.',{type:'failed'})
 		}
 
 		messengerDB.collection('conversations').findOne(
 			{
-				name:entry.name
+				name:_entry.name
 			},
 			function(error,result){
+				console.log('result',result)
 				if (!result) {
-					callback(registerFunc(mongo,messengerDB,entry),{type:'register'})
+					registerFunc(
+						mongo,
+						messengerDB,
+						entry,
+						callback
+					)
 				}else {
-					bcrypt.compare(entry.password,result.password,function(error,result){
-						if (result==true){
-							console.log('Welcome '+entry.name)
+					bcrypt.compare(_entry.password,result.password,function(error,_result){
+						console.log('_result',_result)
+						if (_result==true){
+							console.log('Welcome '+_entry.name)
 							mongo.close();
+							callback(result,{type:'login'})
 						}else {
 							console.log('Password invalid.')
 							mongo.close();
-						}
-						callback(result,{type:'login'})
+							callback('Password invalid.',{type:'failed'})
+						}						
 					})
 				}				
 			}
@@ -553,23 +664,29 @@ function insertOneToDB(entry,callback){
 	})
 }
 
-function registerFunc(database,collection,entry){
+function registerFunc(database,collection,entry,callback){
+	let _entry=JSON.parse(entry);
 	var mongo=database
 	var messengerDB=collection
-	bcrypt.hash(entry.password,10,function(error,hash){
+	bcrypt.hash(_entry.password,10,function(error,hash){
 		if(error){
 			throw('bcrypt error: '+error)
 		}
-		entry.password=hash;
-		messengerDB.collection('conversations').insertOne(entry,function(error,result){
+		_entry.password=hash;
+		messengerDB.collection('conversations').insertOne(_entry,function(error,result){
 			if(error) {
 				throw('step3:'+error)
 			}			
-			console.log(entry.name+' registered, welcome!')
+			console.log(_entry.name+' registered, welcome!')
+			_entry.id=result.insertedId;
 			mongo.close();
+
+			callback(
+				_entry,
+				{type:'register'}
+			)
 		})
 	})
-	return entry;
 }
 
 function insertDialogueToDB(entry,options){
@@ -579,7 +696,7 @@ function insertDialogueToDB(entry,options){
 			_db_collection_pointer=options.databaseCollection
 		}
 	}	
-	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
+	MongoClient.connect(url_db,{ useNewUrlParser: true, useUnifiedTopology: true },function(error,mongo){
 		if (error) {
 			throw(error)
 		}
@@ -600,7 +717,7 @@ function changeCollectionFromDB(options,callback){
 	if (options.type==='public') {
 		callback(db_collection_pointer);
 	}else {
-		MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
+		MongoClient.connect(url_db,{ useNewUrlParser: true, useUnifiedTopology: true },function(error,mongo){
 			if (error) {
 				throw(error)
 			}
@@ -657,7 +774,7 @@ function exportDialogueFromDB(next,options){
 			_db_collection_pointer=options.databaseCollection
 		}
 	}	
-	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
+	MongoClient.connect(url_db,{ useNewUrlParser: true, useUnifiedTopology: true },function(error,mongo){
 		if (error) {
 			throw(error)
 		}
@@ -687,7 +804,7 @@ function exportDialogueFromDB(next,options){
 
 function validateSessionFromDB(sid,cid,callback){
 	// console.log(sid,cid)
-	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
+	MongoClient.connect(url_db,{ useNewUrlParser: true, useUnifiedTopology: true },function(error,mongo){
 		if (error) {
 			throw(error)
 		}
@@ -721,7 +838,7 @@ function validateSessionFromDB(sid,cid,callback){
 }
 
 function removeSessionFromDB(sid){
-	MongoClient.connect(url_db,{ useNewUrlParser: true },function(error,mongo){
+	MongoClient.connect(url_db,{ useNewUrlParser: true, useUnifiedTopology: true },function(error,mongo){
 		if (error) {
 			throw(error)
 		}

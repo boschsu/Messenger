@@ -47,7 +47,8 @@
 </section>
 
 <section id="conversation_control" class="conversation_control">
-    <button class="button" id="send_messenger">发送</button>
+    <button class="button" id="send_messenger">Send</button>
+    <button class="button" id="test_session">test session</button>
 </section>
 
 <section id="public_room">
@@ -130,37 +131,60 @@ $(function () {
     var privateroom=$('#private_room');
     var roomkeeper=$('#room_keeper');
     var loadingscreen=$('#loading_screen');
+    var test_session=$('#test_session');
     
     postlogin.on('submit',function(e){
         e.preventDefault();
-        
-        msg_audio.load();
-        loadingscreen.show();
-        var xhr=new XMLHttpRequest();
-        xhr.open('post', api_url+'postlogin', true);
-        xhr.withCredentials = true;
-        xhr.onreadystatechange=function(){
-            if (xhr.readyState === 4 && xhr.status === 200) {
-                loadingscreen.hide();
-                console.log(xhr.responseText)
-                if (xhr.responseText!=='') {
-                    var result=JSON.parse(xhr.responseText);
-                    if (connection==undefined) {
-                        connectToWebsocket(function(){afterAuth(result.name)})
-                        afterclosesign=false
-                    }
-                    
+
+        fetch('https://192.168.31.27:3001/postlogin',{
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            method: "POST",
+            body: JSON.stringify({
+                name: $("input[name=name]").val(), 
+                password: $("input[name=password]").val()
+            }),
+            credentials: 'include',
+        }).then(response=>{
+            response.json().then(result=>{
+                if (result.name) {
+                    connectToWebsocket(function(){afterAuth(result.name)})
                 }else {
-                    console.log('no name parsed or already login.')
+                    console.error(result.msg)
                 }
-            }else {                
-                setTimeout(function(){
-                    loadingscreen.hide();
-                },15000)  //for connection interrupt
-            }
-        }
-        xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");//declare this is a form
-        xhr.send($('#postlogin').serialize());  
+            })
+        })
+
+        // 
+        // msg_audio.load();
+        // loadingscreen.show();
+        // var xhr=new XMLHttpRequest();
+        // xhr.open('post', api_url+'postlogin', true);
+        // xhr.withCredentials = false;
+        // xhr.onreadystatechange=function(){
+        //     if (xhr.readyState === 4 && xhr.status === 200) {
+        //         loadingscreen.hide();
+        //         console.log(xhr.responseText)
+        //         if (xhr.responseText!=='') {
+        //             var result=JSON.parse(xhr.responseText);
+        //             if (connection==undefined) {
+        //                 connectToWebsocket(function(){afterAuth(result.name)})
+        //                 afterclosesign=false
+        //             }
+        //             
+        //         }else {
+        //             console.log('no name parsed or already login.')
+        //         }
+        //     }else {                
+        //         setTimeout(function(){
+        //             loadingscreen.hide();
+        //         },15000)  //for connection interrupt
+        //     }
+        // }
+        // xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");//declare this is a form
+        // xhr.send($('#postlogin').serialize());  
     })
 
     function afterAuth(name){
@@ -247,6 +271,7 @@ $(function () {
 
     function bindWebsocketConnection(onopen_callback){
         connection.onopen = function () {
+            console.log('ok open')
             // first we want users to enter their names
             input.removeAttr('disabled');
             status.text('Choose name:');
@@ -299,6 +324,7 @@ $(function () {
                 if (json.name) {
                     status.text(json.name + ': ').css('color', json.color)
                 }
+                input.removeAttr('disabled').focus();
             } else if (json.type === 'message') { // it's a single message
                 input.removeAttr('disabled'); // let the user write another message
                 addMessage(
@@ -309,6 +335,8 @@ $(function () {
                     json.origin
                 );
                 setTimeout(function(){input.focus();$('#play').click();},0);
+            } else if (json.type === 'ping/pong') { // it's a ping pong server message
+                connection.send('pong')
             } else {
                 console.log('Hmm..., I\'ve never seen JSON like this: ', json);
             }
@@ -318,6 +346,18 @@ $(function () {
             afterClose(e);            
         }
     }
+
+    test_session.on('click',function(e) {
+        fetch('https://192.168.31.27:3001/test-session',{
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            method: "POST",
+            body: JSON.stringify({a: 1, b: 2}),
+            credentials: 'include',
+        })
+    });
 
     /**
      * Send mesage when user presses Enter key
@@ -455,6 +495,7 @@ $(function () {
     // }
 
     function sendMessenger(msg){
+
         var msg = msg|| input.val();
         if (!msg) {
             return;
@@ -466,10 +507,10 @@ $(function () {
         // sends back response
         input.attr('disabled', 'disabled');
 
-        // login
+        //login
         if (myName === false) {
             myName = msg;
-            var minutes=.25;//cookie sid_name expired time
+            var minutes=2;//cookie sid_name expired time
             if ($.cookie('sid_name')===undefined) {
                 $.cookie('sid_name',myName, { expires: minutes/1440, path: '/' })
                 setTimeout(function(){
@@ -584,7 +625,7 @@ $(function () {
     if ($.cookie('sid_name')!==undefined){
         //if (connection==undefined) {
             //connectToWebsocket(getDataWhenRefresh)
-            getDataWhenRefresh();
+            // getDataWhenRefresh();
         //}        
     }
 });
