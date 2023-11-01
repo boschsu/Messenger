@@ -92,13 +92,33 @@ var msg_audio=new Audio('https://assets.mixkit.co/active_storage/sfx/1491/1491-p
     
 $(function () {
     "use strict";
-    $('#play').on('click',function(){
-        msg_audio.play()    
-    })
-    
+    ////////////////////////////////////////////////// Vriable define
+    const fullday=86400000;
+
     var url='wss://localhost:3001';
     var api_url='https://localhost:3001/';
-
+    var control=$('#conversation_control');
+    var content = $('#conversation_board');
+    var privaterooms=[]
+    var _content=content;
+    var input = $('#input_messenger');
+    var send = $('#send_messenger');
+    var status = $('#status');
+    var statusbar=$('#status_bar');
+    var postlogin=$('#postlogin');
+    var getlogout=$('#getlogout');
+    var publicroom=$('#public_room');
+    var privateroom=$('#private_room');
+    var roomkeeper=$('#room_keeper');
+    var loadingscreen=$('#loading_screen');
+    var test_session=$('#test_session');
+    var afterclosesign=false;
+    var myColor = false; // my color assigned by the server    
+    var myName = false; // my name sent to the server
+    var connection;//request to server
+    let previous_targetName=''
+    let logout_timer=null;
+    ////////////////////////////////////////////////// Object define
     $.fn.serializeObject = function(){
         var o = {};
         var a = this.serializeArray();
@@ -115,114 +135,34 @@ $(function () {
         return o;
     };
 
-    const fullday=86400000;
+    // if user is running mozilla then use it's built-in WebSocket
+    window.WebSocket = window.WebSocket || window.MozWebSocket;
 
-    var control=$('#conversation_control');
-    var content = $('#conversation_board');
-    var privaterooms=[]
-    var _content=content;
-    var input = $('#input_messenger');
-    var send = $('#send_messenger');
-    var status = $('#status');
-    var statusbar=$('#status_bar');
-    var postlogin=$('#postlogin');
-    var getlogout=$('#getlogout');
-    var publicroom=$('#public_room');
-    var privateroom=$('#private_room');
-    var roomkeeper=$('#room_keeper');
-    var loadingscreen=$('#loading_screen');
-    var test_session=$('#test_session');
-    
-    postlogin.on('submit',function(e){
-        e.preventDefault();
-
-        fetch('https://192.168.31.27:3001/postlogin',{
-            headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/json'
-            },
-            method: "POST",
-            body: JSON.stringify({
-                name: $("input[name=name]").val(), 
-                password: $("input[name=password]").val()
-            }),
-            credentials: 'include',
-        }).then(response=>{
-            response.json().then(result=>{
-                if (result.name) {
-                    connectToWebsocket(function(){afterAuth(result.name)})
-                }else {
-                    console.error(result.msg)
-                }
-            })
-        })
-
-        // 
-        // msg_audio.load();
-        // loadingscreen.show();
-        // var xhr=new XMLHttpRequest();
-        // xhr.open('post', api_url+'postlogin', true);
-        // xhr.withCredentials = false;
-        // xhr.onreadystatechange=function(){
-        //     if (xhr.readyState === 4 && xhr.status === 200) {
-        //         loadingscreen.hide();
-        //         console.log(xhr.responseText)
-        //         if (xhr.responseText!=='') {
-        //             var result=JSON.parse(xhr.responseText);
-        //             if (connection==undefined) {
-        //                 connectToWebsocket(function(){afterAuth(result.name)})
-        //                 afterclosesign=false
-        //             }
-        //             
-        //         }else {
-        //             console.log('no name parsed or already login.')
-        //         }
-        //     }else {                
-        //         setTimeout(function(){
-        //             loadingscreen.hide();
-        //         },15000)  //for connection interrupt
-        //     }
-        // }
-        // xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");//declare this is a form
-        // xhr.send($('#postlogin').serialize());  
-    })
-
+    ////////////////////////////////////////////////// Function define
     function afterAuth(name){
         postlogin.hide();
         statusbar.show();
         control.show();
         content.show();
-        sendMessenger(name);
+        sendMessenger('Instruction/List/public');
     }
 
     function logout(){
-        // if ($.cookie('sid_name')===undefined){
-        //     return false;
-        // }
-        var xhr=new XMLHttpRequest();
-        xhr.open(
-            'get', 
-            api_url+'getlogout?sid_name='+$.cookie('sid_name'), 
-            true
-        );
-        xhr.onreadystatechange=function(){
-            if (xhr.readyState === 4 && xhr.status === 200) {
-                if (connection!==undefined) {
-                    connection.close()
-                }
-                afterClose()
-                console.log(xhr.responseText)
-                // if (xhr.responseText!=='') {
-                //     var result=JSON.parse(xhr.responseText);
-                //     afterAuth(result.name);
-                // }else {
-                //     console.log('no name parsed.')
-                // }
-            }
-        }        
-        xhr.send();
+        var authen=$.cookie('name')
+
+        fetch('https://192.168.31.27:3001/getlogout',{
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            method: "POST",
+            body: JSON.stringify({
+                sid_name: authen
+            }),
+            credentials: 'include',
+        })
     }
-    var afterclosesign=false;
+    
     function afterClose(e){
         if (afterclosesign===true) {
             return false;
@@ -248,27 +188,6 @@ $(function () {
         alert("WebSocket is closed now.",e);
     }
 
-    // my color assigned by the server
-    var myColor = false;
-    // my name sent to the server
-    var myName = false;
-
-    // if user is running mozilla then use it's built-in WebSocket
-    window.WebSocket = window.WebSocket || window.MozWebSocket;
-
-    // if browser doesn't support WebSocket, just show some notification and exit
-    if (!window.WebSocket) {
-        content.html($('<p>', { text: 'Sorry, but your browser doesn\'t '
-                                    + 'support WebSockets.'} ));
-        input.hide();
-        status.hide();
-        button.hide();
-        return;
-    }
-
-    // open connection
-    var connection;//request to server
-
     function bindWebsocketConnection(onopen_callback){
         connection.onopen = function () {
             console.log('ok open')
@@ -286,9 +205,8 @@ $(function () {
             content.html($('<p>', { text: 'Sorry, but there\'s some problem with your '
                                         + 'connection or the server is down.' } ));
         };
-
-        // most important part - incoming messages
-        connection.onmessage = function (message) {
+        
+        connection.onmessage = function (message) {// most important part - incoming messages
             // try to parse JSON message. Because we know that the server always returns
             // JSON this should work without any problem but we should make sure that
             // the massage is not chunked or otherwise damaged.
@@ -308,7 +226,6 @@ $(function () {
                 // from now user can start sending messages
             } else if (json.type === 'history') { // entire message history
                 clearMessage(json.origin);
-                //console.log('history received')
                 // insert every single message to the chat window
                 for (var i=0; i < json.data.length; i++) {
                     addMessage(
@@ -347,63 +264,6 @@ $(function () {
         }
     }
 
-    test_session.on('click',function(e) {
-        fetch('https://192.168.31.27:3001/test-session',{
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            },
-            method: "POST",
-            body: JSON.stringify({a: 1, b: 2}),
-            credentials: 'include',
-        })
-    });
-
-    /**
-     * Send mesage when user presses Enter key
-     */
-    send.on('click',function(e) {
-        //if (e.keyCode === 13) {
-            if ($.cookie('sid_name')!==undefined) {
-                sendMessenger()
-            }else {
-                if (connection!==undefined) {
-                    connection.close()
-                }
-            }
-        //}
-    });
-    input.on('keyup',function(e) {
-        if (e.keyCode === 13) {
-            if ($.cookie('sid_name')!==undefined) {
-                sendMessenger()
-            }else {
-                if (connection!==undefined) {
-                    connection.close()
-                }
-            }
-        }
-    });
-
-    getlogout.on('click',function(e){
-        logout();
-    })
-
-    roomkeeper.on('click','li',function(e){
-        if ($.cookie('sid_name')===undefined){
-            logout();
-            return false;
-        }
-        if ($(this).hasClass('current')===true){
-            return false;
-        //}else if (roomkeeper.children('[data-target='+$(this).attr('data-target')+']').length===1){
-        //    changeRoom($(this).attr('data-target'))
-        }else {
-            validationIdentity($(this).attr('data-target'))            
-        }
-    })
-
-    let previous_targetName=''
     function changeRoom(targetName){
         if (targetName==='public'){
             // privaterooms.filter(function(room){
@@ -444,18 +304,6 @@ $(function () {
         previous_targetName=targetName
     }
 
-    content.on('click','i.author',function(e){
-        if ($.cookie('sid_name')===undefined){
-            logout();
-            return false;
-        }
-        if ($.cookie('sid_name')===this.textContent) {
-            console.log('can\'t send msg to self.')
-            return false;
-        }
-        validationIdentity(this.textContent)
-    })
-
     function validationIdentity(targetName){
         var xhr=new XMLHttpRequest();
         var _type='private'
@@ -479,24 +327,8 @@ $(function () {
         xhr.send("type="+_type+"&hostname="+$.cookie('sid_name')+"&guestname="+targetName);        
     }
 
-    // function beforePrivateSend(targetName,_type){
-    //     publicroom.hide();
-    //     privateroom.show();
-    //     privaterooms.show();
-    //     roomkeeper.children('.current').removeClass('current')
-    //     if (roomkeeper.children('[data-target='+targetName+']').length===0){
-    //         roomkeeper.append('<li class="current" data-target='+targetName+'>'+targetName+'</li>')
-    //     }
-    //     if (_type==='private') {
-    //         _content=privaterooms
-    //     }else {
-    //         _content=content;
-    //     }
-    // }
-
     function sendMessenger(msg){
-
-        var msg = msg|| input.val();
+        var msg = msg || input.val();
         if (!msg) {
             return;
         }
@@ -506,36 +338,8 @@ $(function () {
         // disable the input field to make the user wait until server
         // sends back response
         input.attr('disabled', 'disabled');
-
-        //login
-        if (myName === false) {
-            myName = msg;
-            var minutes=2;//cookie sid_name expired time
-            if ($.cookie('sid_name')===undefined) {
-                $.cookie('sid_name',myName, { expires: minutes/1440, path: '/' })
-                setTimeout(function(){
-                    logout()
-                },1/1440*fullday*minutes)
-            }
-        }
     }
 
-    /**
-     * This method is optional. If the server wasn't able to respond to the
-     * in 3 seconds then show some error message to notify the user that
-     * something is wrong.
-     */
-    // setInterval(function() {
-    //     if (connection.readyState !== 1) {
-    //         status.text('Error');
-    //         input.attr('disabled', 'disabled').val('Unable to comminucate '
-    //                                              + 'with the WebSocket server.');
-    //     }
-    // }, 3000);
-
-    /**
-     * Add message to the chat window
-     */
     function addMessage(author, message, color, timestamp, room) {
         if (room==='public') {
             _content=content
@@ -616,19 +420,222 @@ $(function () {
         }
     }
 
-    function connectToWebsocket(onopen_callback){
-        connection = new WebSocket(url);
+    function connectToWebsocket(onopen_callback, connected_user){
+        connection = new WebSocket(url+'?user='+connected_user);
         bindWebsocketConnection(onopen_callback)
     }
 
-    //init
-    if ($.cookie('sid_name')!==undefined){
-        //if (connection==undefined) {
-            //connectToWebsocket(getDataWhenRefresh)
-            // getDataWhenRefresh();
-        //}        
+    function setCookie(result){
+        // $.cookie(
+        //     'log_info_local', 
+        //     JSON.stringify({
+        //         authenticated:result.authenticated,
+        //         name:result.user.name,
+        //     }), 
+        //     { 
+        //         expires: result.cookie.originalMaxAge/1000/60/1440, 
+        //         path: result.cookie.path,
+        //     }
+        // )
+        logout_timer=setTimeout(function(){
+            logout()
+        },result.cookie.originalMaxAge-3000)
     }
+
+    ////////////////////////////////////////////////// Event define
+    $('#play').on('click',function(){
+        msg_audio.play()    
+    })
+    
+    postlogin.on('submit',function(e){
+        e.preventDefault();
+
+        fetch('https://192.168.31.27:3001/postlogin',{
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            },
+            method: "POST",
+            body: JSON.stringify({
+                name: $("input[name=name]").val(), 
+                password: $("input[name=password]").val()
+            }),
+            credentials: 'include',
+        }).then(response=>{
+            response.json().then(result=>{
+                if (result.authenticated) {
+                    connectToWebsocket(
+                        function(){
+                            afterAuth(result.user.name)
+                        },
+                        result.user.name
+                    );
+                    setCookie(result)
+                }else {
+                    console.error(result.msg)
+                }
+            })
+        })
+    })
+
+    test_session.on('click',function(e) {
+        fetch('https://192.168.31.27:3001/test-session',{
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            },
+            method: "POST",
+            body: JSON.stringify({a: 1, b: 2}),
+            credentials: 'include',
+        })
+    });
+
+    send.on('click',function(e) {
+        let authen=$.cookie('name');
+        if (authen!==undefined) {
+            sendMessenger()
+        }else {
+            if (connection!==undefined) {
+                connection.close()
+            }
+        }
+    });
+
+    input.on('keyup',function(e) {
+        if (e.keyCode === 13) {
+            if ($.cookie('sid_name')!==undefined) {
+                sendMessenger()
+            }else {
+                if (connection!==undefined) {
+                    connection.close()
+                }
+            }
+        }
+    });
+
+    getlogout.on('click',function(e){
+        logout();
+    })
+
+    roomkeeper.on('click','li',function(e){
+        let authen=$.cookie('name');
+        if (authen===undefined){
+            logout();
+            return false;
+        }
+        if ($(this).hasClass('current')===true){
+            return false;
+        //}else if (roomkeeper.children('[data-target='+$(this).attr('data-target')+']').length===1){
+        //    changeRoom($(this).attr('data-target'))
+        }else {
+            validationIdentity($(this).attr('data-target'))            
+        }
+    })
+
+    content.on('click','i.author',function(e){
+        if ($.cookie('sid_name')===undefined){
+            logout();
+            return false;
+        }
+        if ($.cookie('sid_name')===this.textContent) {
+            console.log('can\'t send msg to self.')
+            return false;
+        }
+        validationIdentity(this.textContent)
+    })
+    
+    ////////////////////////////////////////////////// Initialize Code    
+    
+    if (!window.WebSocket) {// if browser doesn't support WebSocket, just show some notification and exit
+        content.html($('<p>', { 
+            text: 'Sorry, but your browser doesn\'t support WebSockets.'
+        }));
+        input.hide();
+        status.hide();
+        button.hide();
+        return;
+    }
+
+    if ($.cookie('name')!==undefined){
+        let authen=$.cookie('name');
+        let expire=$.cookie('expire');
+        let rest=expire-new Date().getTime();
+        connectToWebsocket(
+            function(){
+                afterAuth(authen)
+            },
+            authen
+        );
+        // if (connection==undefined) {
+        //     connectToWebsocket(getDataWhenRefresh)
+        //     getDataWhenRefresh();
+        // }        
+        if (logout_timer===null && rest>0) {
+            console.log('Set timer for logout rest milliseconds: ', rest)
+            logout_timer=setTimeout(function(){
+                logout()
+            },rest-3000)
+        }
+    }  
 });
+
+////////////////////////////////////////////////////////////
+        // 
+        // msg_audio.load();
+        // loadingscreen.show();
+        // var xhr=new XMLHttpRequest();
+        // xhr.open('post', api_url+'postlogin', true);
+        // xhr.withCredentials = false;
+        // xhr.onreadystatechange=function(){
+        //     if (xhr.readyState === 4 && xhr.status === 200) {
+        //         loadingscreen.hide();
+        //         console.log(xhr.responseText)
+        //         if (xhr.responseText!=='') {
+        //             var result=JSON.parse(xhr.responseText);
+        //             if (connection==undefined) {
+        //                 connectToWebsocket(function(){afterAuth(result.name)})
+        //                 afterclosesign=false
+        //             }
+        //             
+        //         }else {
+        //             console.log('no name parsed or already login.')
+        //         }
+        //     }else {                
+        //         setTimeout(function(){
+        //             loadingscreen.hide();
+        //         },15000)  //for connection interrupt
+        //     }
+        // }
+        // xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");//declare this is a form
+        // xhr.send($('#postlogin').serialize());
+
+    // function beforePrivateSend(targetName,_type){
+    //     publicroom.hide();
+    //     privateroom.show();
+    //     privaterooms.show();
+    //     roomkeeper.children('.current').removeClass('current')
+    //     if (roomkeeper.children('[data-target='+targetName+']').length===0){
+    //         roomkeeper.append('<li class="current" data-target='+targetName+'>'+targetName+'</li>')
+    //     }
+    //     if (_type==='private') {
+    //         _content=privaterooms
+    //     }else {
+    //         _content=content;
+    //     }
+    // }
+
+    /**
+     * This method is optional. If the server wasn't able to respond to the
+     * in 3 seconds then show some error message to notify the user that
+     * something is wrong.
+     */
+    // setInterval(function() {
+    //     if (connection.readyState !== 1) {
+    //         status.text('Error');
+    //         input.attr('disabled', 'disabled').val('Unable to comminucate '
+    //                                              + 'with the WebSocket server.');
+    //     }
+    // }, 3000);
 </script>
 </body>
 </html>

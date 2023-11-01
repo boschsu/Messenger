@@ -15,7 +15,7 @@ var MongoClient=require('mongodb').MongoClient;
 var ObjectID = require('mongodb').ObjectID;
 var connect = require('connect');
 var expressSession = require('express-session')
-// var cookieParser = require('cookie-parser')
+var cookieParser = require('cookie-parser')
 var MongoStore=require('connect-mongo')(expressSession)
 var http=require('http');
 var https=require('https');
@@ -26,9 +26,10 @@ var requestIp=require('request-ip')
 var querystring=require('querystring')
 var bcrypt=require('bcrypt')
 var app=connect();
+const cookie_life=1 * 1 * 1 * 60 * 1000;
 
 app.use(requestIp.mw({ attributeName : 'clientIP' }))
-// app.use(cookieParser())
+app.use(cookieParser())// Which can make request.cookies return cookie from client request, and return a Object.
 var sessionParser=expressSession({
 	secret: 'node messenger',
 	httpOnly: true, 
@@ -43,7 +44,7 @@ var sessionParser=expressSession({
 		sameSite: 'strict',
 	// 	secure: true,
 	// 	path:'/',
-		maxAge: 1 * 1 * 2 * 60 * 1000 //cookie in browser connect.sid expired time, is the session created by express session expired time either.
+		maxAge: cookie_life //cookie in browser connect.sid expired time, is the session created by express session expired time either.
 	}
 })
 app.use(sessionParser)
@@ -58,7 +59,7 @@ var server=https.createServer(
 		async function(request,response){
 
 			// Set CORS headers
-			response.setHeader('Access-Control-Allow-Origin', 'https://192.168.31.27:3001');
+			response.setHeader('Access-Control-Allow-Origin', 'https://192.168.31.27:8081');
 			response.setHeader('Access-Control-Request-Method', '*');
 			response.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET, POST');
 			response.setHeader('Access-Control-Allow-Headers', "Access-Control-Allow-Headers, Origin, Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers");
@@ -86,7 +87,7 @@ var server=https.createServer(
             		if (request.method==='POST'){
             			request.on('end', function(){
 		            		response.end(JSON.stringify({
-		            			username: response.req.session.user || 'not found session',
+		            			username: response.req.session || 'not found session',
 		            		}));
 		            	})
 					}
@@ -98,8 +99,9 @@ var server=https.createServer(
 		            	})
             		}
             		if (request.method==='POST'){
+            			console.log('sessionID',response.req.sessionID)
             			request.on('end',function(){
-							response.writeHead(200, {'Content-Type': 'application/json'});
+							
 							if (validationData(_data)) {
 								insertOneToDB(_data,async function(result,options){
 									console.log('insertOneToDB begin')
@@ -107,15 +109,35 @@ var server=https.createServer(
 										response.end(JSON.stringify({
 											msg:'wrong password'
 										}));//wrong password
-									}else {
+									}
+									else {
 										switch(options.type) {
 											case 'register':
+												response.req.session.authenticated = true
 												response.req.session.user=result.name;//IMPORTANT... save the user id to session where store in DB
-												response.end('{"name":"'+result.name+'"}')
+												response.end(JSON.stringify(response.req.session))
 												break;
 											case 'login':
-												response.req.session.user = result.name
-
+												// console.log(result)
+												response.req.session.authenticated = true
+												response.req.session.user = {
+													name:result.name,
+													pass:result.password
+												}
+												response.writeHead(200, {
+													'Content-Type': 'application/json',
+													'Set-Cookie':[
+														'name='+result.name+'; SameSite=Strict; expires='+new Date(new Date().getTime()+cookie_life).toUTCString(),
+														'expire='+new Date(new Date().getTime()+cookie_life).getTime()+'; SameSite=Strict; expires='+new Date(new Date().getTime()+cookie_life).toUTCString(),
+													]
+												});
+												// request.cookies.log_info={
+												// 	authenticated:true,
+												// 	user:{
+												// 		name:result.name,
+												// 	}
+												// }
+												// response.req.session.cookie.user = result.name
 											    // try {
 											    //     await response.req.session.save();
 											    // } catch (err) {
@@ -124,9 +146,7 @@ var server=https.createServer(
 											    // }
 												//getSessionFromDB(request.sessionID,function(data){
 													//if (data) {
-														response.end(
-															'{"name":"'+result.name+'"}'
-														)	
+														response.end(JSON.stringify(response.req.session))
 													//}else {
 													//	response.end();
 														//get invalid or expired
@@ -163,25 +183,47 @@ var server=https.createServer(
 					
 					
 					break;
-				case '/getlogout':
-					var sid_name=querystring.parse( url.parse(request.url).query ).sid_name
-					console.log('BEFORE CLOSE, now clients length: ',clients.length)
-					console.log(sid_name)
-					clients.filter(function(client){
-						return client.userName===sid_name
-					}).forEach(function(_client){
-						websocket_close_flag=true;
-						_client.connection.close()
-					})
+				case '/getlogout':	
+					if (request.method==='OPTIONS'){
+            			request.on('end', function(){
+		            		response.end('{"pre-light":"ok"}');
+		            	})
+            		}
+            		if (request.method==='POST'){	
+            			request.on('end', function(){
+		            		let body=JSON.parse(_data);
+						
+							response.req.session.cookie.maxAge = 3000;
+							response.req.session.save(function(err) {
+							})
+							response.req.session.reload(function(err) {
+							})
+							response.req.session.touch();
+							var sid_name=body.sid_name
+							console.log('Websocket owner: ',sid_name,' BEFORE CLOSE, now clients length: ',clients.length)
+							clients.filter(function(client){
+								return client.userName===sid_name
+							}).forEach(function(_client){
+								websocket_close_flag=true;
+								_client.connection.close()
+							})
 
-					clients=clients.filter(function(client){
-						return client.userName!==sid_name
-					})
+							clients=clients.filter(function(client){
+								return client.userName!==sid_name
+							})
 
-					response.writeHead(200,{
-						'Content-Type':'text/html'
-					});
-					response.end('logout success');
+							response.writeHead(200, {
+								'Content-Type':'text/html',
+								'Set-Cookie':[
+									'name='+'null'+'; SameSite=Strict; expires='+new Date(new Date().getTime()).toUTCString(),
+									'connect.sid='+'null'+'; SameSite=Strict; expires='+new Date(new Date().getTime()).toUTCString()
+								]
+							});
+
+							response.end('logout success');
+		            	})
+
+					}
 					break;
 				case '/postrefresh':
 					var _data='';
@@ -276,6 +318,7 @@ var server=https.createServer(
 					})
 					break;	
 				default:
+					console.log('request.cookie',request.cookies.name)
 					var fileName=path.basename(request.url) || 'index.html';
 					fileName=path.basename(request.url).indexOf('?')==0
 						?'index.html'
@@ -311,66 +354,133 @@ server.listen(websocketPort,function(){
 })
 
 var ws=new websocketServer({
-	httpServer:server
+	httpServer:server,
+	// autoAcceptConnections: false
 })
 var history=[];
 var clients=[];
 var db_collection_pointer='dialogues';
 var websocket_close_flag=false;
 
+function originIsAllowed(url){
+	let result=false;
+	switch (url){
+		case 'https://192.168.31.27:8081':
+			result=true;
+			break;
+		default:
+			break;	
+	}
+	return result;
+}
+
+function notConnected(name){
+	let result;
+	result=clients.filter(item=>{
+		return item.userName===name
+	})
+	if (result.length) {
+		return false;
+	}else {
+		return true;
+	}
+}
+
 ws.on('request',function(request){
+	if (!request.resourceURL.query.user || (!originIsAllowed(request.origin) && notConnected(request.resourceURL.query.user))) {
+      // Make sure we only accept requests from an allowed origin
+      request.reject();
+      console.log((new Date()) + ' Connection from origin ' + request.origin + ' rejected.');
+      return;
+    }
+	// console.log(request.resourceURL.query.user)
+	console.log('request.key',request.key)
+	// console.log(request.cookies)
+
 	var connection=request.accept(null,request.origin)
+	// console.log('connection',(connection))
+	connection.key=request.key;
 	console.log("Websocket connection from "+request.origin+' accepted.');
 	var userName=false;
 	var userColor=false;
-	var index=clients.push({
+	let client={
 		connection:connection,
-		remoteAddress:connection.remoteAddress,
-		databaseCollection:db_collection_pointer,
-		userName:userName,
+		remoteAddress:request.origin,
+		key:request.key,
+		// databaseCollection:db_collection_pointer,
+		userName:request.resourceURL.query.user,
 		userColor:userColor,
-		targetName:null
-	})-1
+		targetName:null,
+		ping_time:0,
+		pong_time:0,
+		ping_timer:null
+	};
+	connection.client=client;
+	var index=clients.push(client)-1
 	// console.log('clients index: ',index)
 
+	ping(client);
+
 	function ping(client) {
-	    connection.sendUTF(JSON.stringify({
-			origin: 'Server',
-			type:'ping/pong',
-			data: 'ping'
-		}))
+		console.log('client', client.key, client.ping_time)
+		if (typeof client.ping_time === 'undefined' || client.ping_time>client.pong_time+1) {
+  			console.log(client.userName,' WS connect seem lose. Ready for splice websocket client')
+
+  			console.log('Websocket owner: ',client.userName,' BEFORE CLOSE, now clients length: ',clients.length)
+			console.log('clients[index].key',client.key)
+			client.connection.close();
+			
+			// clients.forEach((item,index)=>{
+			// 	if (item.key===client.key) {
+			// 		clients.splice(index, 1);
+			// 	}
+			// })
+			
+  		}else {
+		    connection.sendUTF(JSON.stringify({
+				origin: 'Server',
+				type:'ping/pong',
+				data: 'ping'
+			}))
+			client.ping_time++;
+			client.ping_timer=setTimeout(function(){
+		  		ping(client);
+			},5000)
+		}
   	}
-var ping_timer=null;
-var pong_timer=null;
+// var ping_timer=null;
+// var ping_time=0;
+// var pong_time=0;
   	
-  	ping_timer=setTimeout(function(){
-  		ping();
-  		clearTimeout(pong_timer)	
-  		pong_timer=setTimeout(function(){  		
-	  		console.log('Ready for splice websocket client')
-			clients.splice(index, 1);
-		},10000)	
-	},5000)
+  	// ping_timer=setTimeout(function(){  		
+  		
+	// },5000)
   	
 
 	connection.on('message',function(message){
-		console.log('message',message)
+		// console.log('message',message)
 		if (message.utf8Data==='pong') {
-			console.log('client ws alive.')
-			clearTimeout(pong_timer)
-			ping_timer=setTimeout(function(){
-		  		ping();
-		  		clearTimeout(pong_timer)
-		  		pong_timer=setTimeout(function(){  		
-			  		console.log('Ready for splice websocket client')
-					clients.splice(index, 1);
-				},10000)
-			},5000)
-		  	
+			// console.log('client ws alive.')			
+	  		connection.client.pong_time++;
 		}
-		if (message.type==='utf8') {
-			// console.log( clients )
-			if (clients[index].userName===false) {
+		else if (message.type==='utf8') {
+			if (message.utf8Data==='Instruction/List/public') {
+				exportDialogueFromDB(
+					function(result,targetName){
+						console.log('sendUTF from inquirePrivateDialoguesFromDB')
+						if (result.length>0) {
+							connection.sendUTF(JSON.stringify({
+								origin:targetName,
+								type:'history',
+								data:result
+							}))
+						}
+					},{
+						databaseCollection:'public'
+					}
+				)
+			}
+			else if (clients[index].userName===false) {
 				userName=htmlEntities(message.utf8Data);
 				//userColor=colors.shift()
 // 				sessionParser(
@@ -401,8 +511,8 @@ var pong_timer=null;
 // 		    	);
 			    // console.log(userColor)
 				
-				clients[index].userName=userName
-				clients[index].userColor=userColor
+				// clients[index].userName=userName
+				// clients[index].userColor=userColor
 				//console.log(clients[index].userName)
 				
 				inquirePrivateDialoguesFromDB(userName,function(inquireResult){	
@@ -430,10 +540,10 @@ var pong_timer=null;
 				});
 			}
 			else {
-				console.log((new Date()) + ' Received Message from ' + userName + ': ' + message.utf8Data);
+				console.log((new Date()) + ' Received Message from ' + clients[index].userName + ': ' + message.utf8Data);
 				var obj={
 					time:(new Date()).getTime(),
-					author:userName,
+					author:clients[index].userName,
 					text:htmlEntities(message.utf8Data),					
 					color:userColor
 				}
@@ -483,24 +593,31 @@ var pong_timer=null;
 		}		
 	})
 
-	connection.on('close', function(connection) {
-		console.log('someone close client',userName,userColor)
-		if (userName !== false && userColor !== false) {
-			if (websocket_close_flag===false) {
-				console.log('Ready for splice websocket client')
+	connection.on('close', function(reasonCode, description) {
+		console.log('ready for close ws.', description )
+// 		console.log('someone close client',userName,userColor)
+// 		if (userName !== false && userColor !== false) {
+// 			if (websocket_close_flag===false) {
+// 				console.log('Ready for splice websocket client')
+// 				clients.splice(index, 1);
+// 			}
+ 			
+// 			// console.log('client index: ',index)
+// 			// console.log('client: ',clients[index])
+// 			
+// 			// remove user from the list of connected clients
+		clients.forEach((item,index)=>{
+			if (item.key===connection.key) {
 				clients.splice(index, 1);
 			}
-			console.log('CLOSING, now clients length: ',clients.length)
-			// console.log('client index: ',index)
-			// console.log('client: ',clients[index])
-			
-			// remove user from the list of connected clients
-			//clients.splice(index, 1);
-			// push back user's color to be reused by another user
-			colors.push(userColor);
-
-			websocket_close_flag=false;
-		}
+		})
+		
+// 			// push back user's color to be reused by another user
+// 			colors.push(userColor);
+// 
+// 			websocket_close_flag=false;
+// 		}
+		console.log('CLOSED, now clients length: ',clients.length)
 	});
 
 	connection.on('connect', function(connection){
