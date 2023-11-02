@@ -124,11 +124,12 @@ var server=https.createServer(
 													name:result.name,
 													pass:result.password
 												}
+												console.log('cookie', response.req.session.cookie)
 												response.writeHead(200, {
 													'Content-Type': 'application/json',
 													'Set-Cookie':[
-														'name='+result.name+'; SameSite=Strict; expires='+new Date(new Date().getTime()+cookie_life).toUTCString(),
-														'expire='+new Date(new Date().getTime()+cookie_life).getTime()+'; SameSite=Strict; expires='+new Date(new Date().getTime()+cookie_life).toUTCString(),
+														'name='+result.name+'; SameSite=Strict; expires='+response.req.session.cookie._expires.toUTCString(),
+														'expire='+new Date(response.req.session.cookie._expires).getTime()+'; SameSite=Strict; expires='+response.req.session.cookie._expires.toUTCString(),
 													]
 												});
 												// request.cookies.log_info={

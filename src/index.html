@@ -160,10 +160,13 @@ $(function () {
                 sid_name: authen
             }),
             credentials: 'include',
+        }).then(result=>{
+            afterClose()
         })
     }
     
     function afterClose(e){
+        console.log( afterclosesign )
         if (afterclosesign===true) {
             return false;
         }
@@ -496,7 +499,11 @@ $(function () {
             sendMessenger()
         }else {
             if (connection!==undefined) {
-                connection.close()
+                if (connection.readyState===1) {
+                    connection.close()
+                }else if (connection.readyState===3){
+                    afterClose(e);
+                }
             }
         }
     });
