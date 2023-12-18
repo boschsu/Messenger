@@ -149,27 +149,32 @@ $(function () {
 
     function logout(){
         var authen=$.cookie('name')
-
-        fetch('https://192.168.31.27:3001/getlogout',{
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            },
-            method: "POST",
-            body: JSON.stringify({
-                sid_name: authen
-            }),
-            credentials: 'include',
-        }).then(result=>{
-            afterClose()
-        })
+        if (authen) {
+            fetch('https://192.168.31.27:3001/getlogout',{
+                headers: {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json'
+                },
+                method: "POST",
+                body: JSON.stringify({
+                    sid_name: authen
+                }),
+                credentials: 'include',
+            }).then(result=>{
+                connection.close();
+                afterClose();
+            })
+        }else {
+            alert('You have already logged out')
+        }
     }
     
     function afterClose(e){
-        console.log( afterclosesign )
-        if (afterclosesign===true) {
-            return false;
-        }
+        // console.log( afterclosesign )
+        // if (afterclosesign===true) {
+        //     return false;
+        // }
+        clearTimeout(logout_timer);
         connection=undefined;
         postlogin.show();
         postlogin[0].reset();
@@ -186,14 +191,14 @@ $(function () {
         var _room=roomkeeper.children().eq(0)
         roomkeeper.html(_room)
         myName = false
-        $.removeCookie('sid_name')
-        afterclosesign=true;
-        alert("WebSocket is closed now.",e);
+        $.removeCookie(['sid_name','expire'])
+        // afterclosesign=true;
+        // console.log("WebSocket is closed now.",e);
     }
 
     function bindWebsocketConnection(onopen_callback){
         connection.onopen = function () {
-            console.log('ok open')
+            // console.log('ok open')
             // first we want users to enter their names
             input.removeAttr('disabled');
             status.text('Choose name:');
@@ -425,6 +430,7 @@ $(function () {
 
     function connectToWebsocket(onopen_callback, connected_user){
         connection = new WebSocket(url+'?user='+connected_user);
+        // console.log(connection)
         bindWebsocketConnection(onopen_callback)
     }
 
@@ -443,6 +449,21 @@ $(function () {
         logout_timer=setTimeout(function(){
             logout()
         },result.cookie.originalMaxAge-3000)
+    }
+
+    function _send(e){
+        let authen=$.cookie('name');
+        if (authen!==undefined) {
+            sendMessenger()
+        }else {
+            if (connection!==undefined) {
+                if (connection.readyState===1) {
+                    connection.close()
+                }else if (connection.readyState===3){
+                    afterClose(e);
+                }
+            }
+        }
     }
 
     ////////////////////////////////////////////////// Event define
@@ -475,7 +496,7 @@ $(function () {
                     );
                     setCookie(result)
                 }else {
-                    console.error(result.msg)
+                    alert(result.msg)
                 }
             })
         })
@@ -494,29 +515,12 @@ $(function () {
     });
 
     send.on('click',function(e) {
-        let authen=$.cookie('name');
-        if (authen!==undefined) {
-            sendMessenger()
-        }else {
-            if (connection!==undefined) {
-                if (connection.readyState===1) {
-                    connection.close()
-                }else if (connection.readyState===3){
-                    afterClose(e);
-                }
-            }
-        }
+        _send(e)
     });
 
     input.on('keyup',function(e) {
         if (e.keyCode === 13) {
-            if ($.cookie('sid_name')!==undefined) {
-                sendMessenger()
-            }else {
-                if (connection!==undefined) {
-                    connection.close()
-                }
-            }
+            _send(e)
         }
     });
 
@@ -526,10 +530,10 @@ $(function () {
 
     roomkeeper.on('click','li',function(e){
         let authen=$.cookie('name');
-        if (authen===undefined){
-            logout();
-            return false;
-        }
+        // if (authen===undefined){
+        //     logout();
+        //     return false;
+        // }
         if ($(this).hasClass('current')===true){
             return false;
         //}else if (roomkeeper.children('[data-target='+$(this).attr('data-target')+']').length===1){
@@ -539,17 +543,17 @@ $(function () {
         }
     })
 
-    content.on('click','i.author',function(e){
-        if ($.cookie('sid_name')===undefined){
-            logout();
-            return false;
-        }
-        if ($.cookie('sid_name')===this.textContent) {
-            console.log('can\'t send msg to self.')
-            return false;
-        }
-        validationIdentity(this.textContent)
-    })
+    // content.on('click','i.author',function(e){
+    //     if ($.cookie('sid_name')===undefined){
+    //         logout();
+    //         return false;
+    //     }
+    //     if ($.cookie('sid_name')===this.textContent) {
+    //         console.log('can\'t send msg to self.')
+    //         return false;
+    //     }
+    //     validationIdentity(this.textContent)
+    // })
     
     ////////////////////////////////////////////////// Initialize Code    
     

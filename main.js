@@ -99,12 +99,12 @@ var server=https.createServer(
 		            	})
             		}
             		if (request.method==='POST'){
-            			console.log('sessionID',response.req.sessionID)
+            			// console.log('sessionID',response.req.sessionID)
             			request.on('end',function(){
 							
 							if (validationData(_data)) {
 								insertOneToDB(_data,async function(result,options){
-									console.log('insertOneToDB begin')
+									// console.log('insertOneToDB begin')
 									if (!result) {
 										response.end(JSON.stringify({
 											msg:'wrong password'
@@ -124,7 +124,7 @@ var server=https.createServer(
 													name:result.name,
 													pass:result.password
 												}
-												console.log('cookie', response.req.session.cookie)
+												// console.log('cookie', response.req.session.cookie)
 												response.writeHead(200, {
 													'Content-Type': 'application/json',
 													'Set-Cookie':[
@@ -200,18 +200,6 @@ var server=https.createServer(
 							response.req.session.reload(function(err) {
 							})
 							response.req.session.touch();
-							var sid_name=body.sid_name
-							console.log('Websocket owner: ',sid_name,' BEFORE CLOSE, now clients length: ',clients.length)
-							clients.filter(function(client){
-								return client.userName===sid_name
-							}).forEach(function(_client){
-								websocket_close_flag=true;
-								_client.connection.close()
-							})
-
-							clients=clients.filter(function(client){
-								return client.userName!==sid_name
-							})
 
 							response.writeHead(200, {
 								'Content-Type':'text/html',
@@ -395,14 +383,15 @@ ws.on('request',function(request){
       return;
     }
 	// console.log(request.resourceURL.query.user)
-	console.log('request.key',request.key)
+	// console.log('request.key',request.key)
 	// console.log(request.cookies)
 
 	var connection=request.accept(null,request.origin)
 	// console.log('connection',(connection))
 	connection.key=request.key;
-	console.log("Websocket connection from "+request.origin+' accepted.');
-	var userName=false;
+	connection.userName=request.resourceURL.query.user;
+	console.log("Websocket connection from "+request.origin+' accepted. Assigned indentifier: ', connection.userName+'::'+connection.key);
+	// var userName=false;
 	var userColor=false;
 	let client={
 		connection:connection,
@@ -423,19 +412,26 @@ ws.on('request',function(request){
 	ping(client);
 
 	function ping(client) {
-		console.log('client', client.key, client.ping_time)
+		// console.log('client', client.key, client.ping_time)
 		if (typeof client.ping_time === 'undefined' || client.ping_time>client.pong_time+1) {
-  			console.log(client.userName,' WS connect seem lose. Ready for splice websocket client')
-
-  			console.log('Websocket owner: ',client.userName,' BEFORE CLOSE, now clients length: ',clients.length)
-			console.log('clients[index].key',client.key)
-			client.connection.close();
+  			console.log('WS: ', client.userName+'::'+client.key,' connect seem lose. Ready for splice websocket client')
+  			if (clients.length) {
+  				console.log('WS: ',client.userName+'::'+client.key,' BEFORE CLOSE, now clients length: ',clients.length)
+  				console.log('client.connection.readyState', client.connection.readyState)
+				if (!client.connection.readyState || client.connection.readyState===3) {
+					console.log('WS: ', client.userName+'::'+client.key,' seems already closed. action stop.')
+				}else {
+					client.connection.close();
+				}
 			
-			// clients.forEach((item,index)=>{
-			// 	if (item.key===client.key) {
-			// 		clients.splice(index, 1);
-			// 	}
-			// })
+				// clients.forEach((item,index)=>{
+				// 	if (item.key===client.key) {
+				// 		clients.splice(index, 1);
+				// 	}
+				// })
+			}else {
+				console.log('WS: ', client.userName+'::'+client.key,' seems already closed. action stop.')
+			}
 			
   		}else {
 		    connection.sendUTF(JSON.stringify({
@@ -449,14 +445,6 @@ ws.on('request',function(request){
 			},5000)
 		}
   	}
-// var ping_timer=null;
-// var ping_time=0;
-// var pong_time=0;
-  	
-  	// ping_timer=setTimeout(function(){  		
-  		
-	// },5000)
-  	
 
 	connection.on('message',function(message){
 		// console.log('message',message)
@@ -481,79 +469,47 @@ ws.on('request',function(request){
 					}
 				)
 			}
-			else if (clients[index].userName===false) {
-				userName=htmlEntities(message.utf8Data);
-				//userColor=colors.shift()
-// 				sessionParser(
-// 					request.httpRequest, 
-// 					{}, 
-// 					function(){
-// 						console.log('request',request)
-// 						request.httpRequest.session.username=userName
-// 						//console.log(request.httpRequest.session.usercolor)
-// 						userColor=request.httpRequest.session.usercolor===undefined
-// 					        	?colors.shift()
-// 					        	:request.httpRequest.session.usercolor				        
-// 						request.httpRequest.session.usercolor=userColor
-// 						// console.log(request.cookies)
-// 						request.httpRequest.session.cid=request.cookies[0].value
-// 						// console.log(request.httpRequest.session.cid)
-// 				        request.httpRequest.session.save(function(error){
-// 				        	if (error) {
-// 				        		console.log("SESSION SAVE ERROR:",error)
-// 				        	}
-// 
-// 				        	connection.sendUTF(JSON.stringify({
-// 								type:'color',
-// 								data:userColor
-// 							}))
-// 				        })
-// 			    	}
-// 		    	);
-			    // console.log(userColor)
-				
-				// clients[index].userName=userName
-				// clients[index].userColor=userColor
-				//console.log(clients[index].userName)
-				
-				inquirePrivateDialoguesFromDB(userName,function(inquireResult){	
-					// inquireResult.forEach(function(result){
-					// 	result.forEach(function(entry){
-					// 		clients[index].databaseCollection.private.push({
-					// 			collectionName:inquireResult.collectionName,
-					// 			targetName:inquireResult.targetName
-					// 		});
-					// 	})
-					// })
-					exportDialogueFromDB(function(result,targetName){
-						console.log('sendUTF from inquirePrivateDialoguesFromDB')
-						if (result.length>0) {
-							connection.sendUTF(JSON.stringify({
-								origin:targetName,
-								type:'history',
-								data:result
-							}))
-						}
-					},{
-						databaseCollection:inquireResult.collectionName,
-						targetName:inquireResult.targetName
-					})
-				});
-			}
+			// else if (clients[index].userName===false) {
+			// 	userName=htmlEntities(message.utf8Data);
+			// 	
+			// 	inquirePrivateDialoguesFromDB(userName,function(inquireResult){	
+			// 		// inquireResult.forEach(function(result){
+			// 		// 	result.forEach(function(entry){
+			// 		// 		clients[index].databaseCollection.private.push({
+			// 		// 			collectionName:inquireResult.collectionName,
+			// 		// 			targetName:inquireResult.targetName
+			// 		// 		});
+			// 		// 	})
+			// 		// })
+			// 		exportDialogueFromDB(function(result,targetName){
+			// 			console.log('sendUTF from inquirePrivateDialoguesFromDB')
+			// 			if (result.length>0) {
+			// 				connection.sendUTF(JSON.stringify({
+			// 					origin:targetName,
+			// 					type:'history',
+			// 					data:result
+			// 				}))
+			// 			}
+			// 		},{
+			// 			databaseCollection:inquireResult.collectionName,
+			// 			targetName:inquireResult.targetName
+			// 		})
+			// 	});
+			// }
 			else {
-				console.log((new Date()) + ' Received Message from ' + clients[index].userName + ': ' + message.utf8Data);
+				console.log((new Date()) + ' Received Message from ' + connection.userName + ': ' + message.utf8Data);
 				var obj={
 					time:(new Date()).getTime(),
-					author:clients[index].userName,
+					author:connection.userName,
 					text:htmlEntities(message.utf8Data),					
-					color:userColor
+					// color:userColor
 				}
 				insertDialogueToDB(obj,{
-					databaseCollection:clients[index].databaseCollection
+					databaseCollection:db_collection_pointer
 				});
-				history=history.slice(-100)
+				// history=history.slice(-100)
 
-				if (clients[index].databaseCollection===db_collection_pointer) {
+				if (!connection.databaseCollection) {
 					var json=JSON.stringify({
 						origin:'public',
 						type:'message', 
@@ -595,7 +551,7 @@ ws.on('request',function(request){
 	})
 
 	connection.on('close', function(reasonCode, description) {
-		console.log('ready for close ws.', description )
+		console.log('WS: ', connection.userName+'::'+connection.key, ' due to reson of ',  description, ' starting terminate.' )
 // 		console.log('someone close client',userName,userColor)
 // 		if (userName !== false && userColor !== false) {
 // 			if (websocket_close_flag===false) {
@@ -618,7 +574,7 @@ ws.on('request',function(request){
 // 
 // 			websocket_close_flag=false;
 // 		}
-		console.log('CLOSED, now clients length: ',clients.length)
+		console.log('WS: ', connection.userName+'::'+connection.key, 'CLOSED, now clients length: ',clients.length)
 	});
 
 	connection.on('connect', function(connection){
@@ -747,7 +703,9 @@ function insertOneToDB(entry,callback){
 		// console.log('Already login: ',_connection.length)
 		if (_connection.length>0) {
 			mongo.close();
-			return callback('WS already login.',{type:'failed'})
+			return callback('Account already login.',{
+				type:'failed'
+			})
 		}
 
 		messengerDB.collection('conversations').findOne(
@@ -755,7 +713,7 @@ function insertOneToDB(entry,callback){
 				name:_entry.name
 			},
 			function(error,result){
-				console.log('result',result)
+				// console.log('result',result)
 				if (!result) {
 					registerFunc(
 						mongo,
@@ -765,7 +723,7 @@ function insertOneToDB(entry,callback){
 					)
 				}else {
 					bcrypt.compare(_entry.password,result.password,function(error,_result){
-						console.log('_result',_result)
+						// console.log('_result',_result)
 						if (_result==true){
 							console.log('Welcome '+_entry.name)
 							mongo.close();
